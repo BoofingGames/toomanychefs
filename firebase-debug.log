@@ -1,0 +1,28 @@
+[debug] [2026-01-26T02:06:00.640Z] ----------------------------------------------------------------------
+[debug] [2026-01-26T02:06:00.643Z] Command:       /nix/store/ixbb20farqh1f4fqbmsn6b1ixn8mc8ij-nodejs-20.18.1/bin/node /home/user/.global_modules/bin/firebase init
+[debug] [2026-01-26T02:06:00.644Z] CLI Version:   15.4.0
+[debug] [2026-01-26T02:06:00.644Z] Platform:      linux
+[debug] [2026-01-26T02:06:00.644Z] Node Version:  v20.18.1
+[debug] [2026-01-26T02:06:00.644Z] Time:          Mon Jan 26 2026 02:06:00 GMT+0000 (Coordinated Universal Time)
+[debug] [2026-01-26T02:06:00.645Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-01-26T02:06:02.446Z] Checked if tokens are valid: true, expires at: 1769396727346
+[debug] [2026-01-26T02:06:02.447Z] Checked if tokens are valid: true, expires at: 1769396727346
+[debug] [2026-01-26T02:06:02.451Z] >>> [apiv2][query] GET https://monospace-pa.googleapis.com/v1/workspaces/toomanychefs-58132463 [none]
+[debug] [2026-01-26T02:06:03.142Z] <<< [apiv2][status] GET https://monospace-pa.googleapis.com/v1/workspaces/toomanychefs-58132463 200
+[debug] [2026-01-26T02:06:03.143Z] <<< [apiv2][body] GET https://monospace-pa.googleapis.com/v1/workspaces/toomanychefs-58132463 {"workspaceId":"toomanychefs-58132463","name":"Toomanychefs","workspaceRedirectUrl":"firebase-toomanychefs-1769338977633.cluster-vaj47lhsg5btorp45gb3vuznb2.cloudworkstations.dev","status":"WORKSPACE_STATUS_RUNNING","lastAccessDatetime":"2026-01-26T01:55:01.209592Z","workspaceTemplate":"WORKSPACE_TEMPLATE_BLANK_WEB","owner":"SELF","serviceAccountEmail":"msp-4879220287070873081@monospace-per-ws-sa-3.iam.gserviceaccount.com","enableNix":true,"ownerEmail":"brodievilleneuve@gmail.com","workspaceImageUrl":"https://www.gstatic.com/monospace/250314/workspace-blank-192.png","templateArgs":"{}","templateRepoUrl":"file:///usr/local/monospace/templates/public/blank-nix","workstationAccessToken":"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2Nsb3VkLmdvb2dsZS5jb20vd29ya3N0YXRpb25zIiwiYXVkIjoiZmlyZWJhc2UtdG9vbWFueWNoZWZzLTE3NjkzMzg5Nzc2MzMuY2x1c3Rlci12YWo0N2xoc2c1YnRvcnA0NWdiM3Z1em5iMi5jbG91ZHdvcmtzdGF0aW9ucy5kZXYiLCJpYXQiOjE3NjkzOTMxNjMsImV4cCI6MTc2OTQ3OTU2M30.c4UTlTYSJ02k4vgv7wdF5jp1QKGaBJbnkt4JsXiUmtrVB4KqKToA_71yhFP2sXHIRe67cprf_fKAK0kRkMvXM7BinmyaJPuR_bO1YciIPgYAtTqhE-exZK7I09D-2DjjnK7pqaknElwtKpg_g81EchIGRAeE23t6OJuY858oRL5GxvkSuAzFpFT-icMc-PCK9IwFcPaROXSTrJHq7PMY9g_0ACs_XnzpuVww_vcQvRD8znUQZ527PPd4HEPtPe9d8ctCRLm5dTqp-EC23ZSUDHBKyl0f2xprkStJ9dxVzssNdi426qB6abUMwFP9Y0t6KYNZpVuPbFV1i6Yb6VkRnQ"}
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /home/user/toomanychefs
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
