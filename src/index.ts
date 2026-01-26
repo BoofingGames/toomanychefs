@@ -1,6 +1,12 @@
 
+import express from 'express';
 import * as crypto from 'crypto';
 import { GameEngine, BONUS_SPINS_AWARDED } from './GameEngine';
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(express.json());
 
 /**
  * This is the main SYNCHRONOUS entry point for the game logic.
@@ -15,19 +21,14 @@ export const resolveBet = (
     clientSeed: string,
     nonce: number
 ) => {
-    // 1. Initialize the Game Engine for a base game spin.
     const engine = new GameEngine(serverSeed, clientSeed, nonce);
-
-    // 2. Resolve the spin. The 'false' indicates this is NOT a bonus spin.
     const result = engine.resolveSpin(false);
-
-    // 3. Return the comprehensive result for the client.
     return {
         finalTotalWin: result.finalTotalWin,
         grid: result.grid,
         winningPaylines: result.winningPaylines,
         reel6Multiplier: result.reel6Multiplier,
-        bonusTriggered: result.bonusTriggered, // Let the client know if the bonus was triggered
+        bonusTriggered: result.bonusTriggered,
     };
 };
 
@@ -37,15 +38,13 @@ export const resolveBet = (
 export const resolveBonus = (serverSeed: string, clientSeed: string, nonce: number) => {
     let totalBonusWin = 0;
     const bonusSpins = [];
-
     for (let i = 0; i < BONUS_SPINS_AWARDED; i++) {
-        const spinNonce = nonce + i + 1; // Use a unique nonce for each bonus spin
+        const spinNonce = nonce + i + 1;
         const engine = new GameEngine(serverSeed, clientSeed, spinNonce);
         const spinResult = engine.resolveSpin(true); // 'true' for bonus spin
         totalBonusWin += spinResult.finalTotalWin;
         bonusSpins.push(spinResult);
     }
-
     return {
         totalBonusWin,
         bonusSpins,
@@ -53,48 +52,34 @@ export const resolveBonus = (serverSeed: string, clientSeed: string, nonce: numb
 };
 
 
-// =================================================================================
-// --- Corrected Example Usage (for testing purposes) ---
-// =================================================================================
+// API endpoint to play a round
+app.post('/play', (req, res) => {
+    const { clientSeed, nonce } = req.body;
 
-// Define a simple type for winning lines for our test function
-type TestWinningLine = { lineId: number; count: number; symbolId: string; payout: number };
+    if (!clientSeed || nonce === undefined) {
+        return res.status(400).send({ error: 'clientSeed and nonce are required.' });
+    }
 
-function testSpin() {
-    console.log('--- Running Corrected Test Spin ---');
-
+    // In a real app, the server seed should be managed securely.
     const serverSeed = crypto.randomBytes(16).toString('hex');
-    const clientSeed = 'abcdef1234567890';
-    const nonce = 1;
-
-    console.log(`  Server Seed: ${serverSeed}`);
-    console.log(`  Client Seed: ${clientSeed}`);
-    console.log(`  Nonce: ${nonce}\n`);
 
     const result = resolveBet(serverSeed, clientSeed, nonce);
 
-    console.log('Spin Result:');
-    console.log(`  Final Win: ${result.finalTotalWin.toFixed(2)}`);
-    console.log(`  Reel 6 Multiplier: ${result.reel6Multiplier}x`);
-    console.log('  Grid:');
-    result.grid.forEach((row: (string | null)[]) => console.log(`    [${row.join(', ')}]`));
-
-    if (result.winningPaylines.length > 0) {
-        console.log('\n  Winning Paylines:');
-        result.winningPaylines.forEach((line: TestWinningLine) => {
-            console.log(`    - Line ${line.lineId}: ${line.count} of symbol '${line.symbolId}' for a payout of ${line.payout.toFixed(2)}`);
-        });
-    } else {
-        console.log('\n  No winning paylines on this spin.');
-    }
-
+    // If a bonus is triggered, you might want to resolve it immediately
+    // or have the client make a separate request.
     if (result.bonusTriggered) {
-        console.log('\n  !!! BONUS TRIGGERED !!!');
         const bonusResult = resolveBonus(serverSeed, clientSeed, nonce);
-        console.log(`  Bonus round total win: ${bonusResult.totalBonusWin.toFixed(2)}`);
+        // Add bonus results to the main result or handle as needed
+        (result as any).bonusResult = bonusResult;
     }
 
-    console.log('\n--- Test Spin Complete ---');
-}
+    res.json(result);
+});
 
-testSpin();
+app.get('/', (req, res) => {
+    res.send('Too Many Chefs server is running!');
+});
+
+app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+});

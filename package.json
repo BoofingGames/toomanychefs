@@ -1,23 +1,24 @@
 {
   "name": "too-many-chefs-server",
   "version": "1.0.0",
-  "description": "Firebase Cloud Functions for the Too Many Chefs slot game.",
+  "description": "Firebase App Hosting backend for the Too Many Chefs game.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "serve": "firebase emulators:start --only functions",
-    "shell": "firebase functions:shell",
-    "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "deploy": "firebase deploy"
   },
   "dependencies": {
-    "firebase": "^12.8.0",
-    "firebase-admin": "^12.1.0",
-    "firebase-functions": "^5.0.1"
+    "@dataconnect/admin-generated": "file:src/dataconnect-admin-generated",
+    "@dataconnect/generated": "file:src/dataconnect-generated",
+    "firebase-admin": "^13.6.0",
+    "express": "^4.17.1"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.5",
+    "@types/express": "^4.17.13"
   }
 }
