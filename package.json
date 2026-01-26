@@ -12,13 +12,14 @@
   "dependencies": {
     "@dataconnect/admin-generated": "file:src/dataconnect-admin-generated",
     "@dataconnect/generated": "file:src/dataconnect-generated",
-    "firebase-admin": "^13.6.0",
-    "express": "^4.17.1"
+    "express": "^4.17.1",
+    "firebase": "^12.8.0",
+    "firebase-admin": "^13.6.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.13",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.4.5",
-    "@types/express": "^4.17.13"
+    "typescript": "^5.4.5"
   }
 }

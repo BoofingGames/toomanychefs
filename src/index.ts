@@ -6,6 +6,9 @@ import { GameEngine, BONUS_SPINS_AWARDED } from './GameEngine';
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Serve static files from the 'public' directory
+app.use(express.static('public'));
+
 app.use(express.json());
 
 /**
@@ -53,7 +56,7 @@ export const resolveBonus = (serverSeed: string, clientSeed: string, nonce: numb
 
 
 // API endpoint to play a round
-app.post('/play', (req, res) => {
+app.post('/api/spin', (req, res) => {
     const { clientSeed, nonce } = req.body;
 
     if (!clientSeed || nonce === undefined) {
@@ -74,10 +77,6 @@ app.post('/play', (req, res) => {
     }
 
     res.json(result);
-});
-
-app.get('/', (req, res) => {
-    res.send('Too Many Chefs server is running!');
 });
 
 app.listen(port, () => {

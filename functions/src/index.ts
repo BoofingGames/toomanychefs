@@ -1,32 +1,74 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * import {onCall} from "firebase-functions/v2/https";
- * import {onDocumentWritten} from "firebase-functions/v2/firestore";
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
 
-import {setGlobalOptions} from "firebase-functions";
-import {onRequest} from "firebase-functions/https";
+import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
+import express from 'express';
+import * as crypto from 'crypto';
+import { GameEngine, BONUS_SPINS_AWARDED } from './GameEngine';
 
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
+const app = express();
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+// Middleware
+app.use(express.static('public'));
+app.use(express.json());
 
-// export const helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+// Game Logic
+export const resolveBet = (
+    serverSeed: string,
+    clientSeed: string,
+    nonce: number
+) => {
+    const engine = new GameEngine(serverSeed, clientSeed, nonce);
+    const result = engine.resolveSpin(false);
+    return {
+        finalTotalWin: result.finalTotalWin,
+        grid: result.grid,
+        winningPaylines: result.winningPaylines,
+        reel6Multiplier: result.reel6Multiplier,
+        bonusTriggered: result.bonusTriggered,
+    };
+};
+
+export const resolveBonus = (serverSeed: string, clientSeed: string, nonce: number) => {
+    let totalBonusWin = 0;
+    const bonusSpins = [];
+    for (let i = 0; i < BONUS_SPINS_AWARDED; i++) {
+        const spinNonce = nonce + i + 1;
+        const engine = new GameEngine(serverSeed, clientSeed, spinNonce);
+        const spinResult = engine.resolveSpin(true);
+        totalBonusWin += spinResult.finalTotalWin;
+        bonusSpins.push(spinResult);
+    }
+    return {
+        totalBonusWin,
+        bonusSpins,
+    };
+};
+
+// API route
+app.post('/api/spin', (req, res) => {
+    logger.info("Spin request received", { body: req.body });
+    const { clientSeed, nonce } = req.body;
+
+    if (!clientSeed || nonce === undefined) {
+        logger.error("Bad request: clientSeed or nonce missing");
+        return res.status(400).send({ error: 'clientSeed and nonce are required.' });
+    }
+
+    const serverSeed = crypto.randomBytes(16).toString('hex');
+    const result = resolveBet(serverSeed, clientSeed, nonce);
+
+    if (result.bonusTriggered) {
+        const bonusResult = resolveBonus(serverSeed, clientSeed, nonce);
+        (result as any).bonusResult = bonusResult;
+    }
+
+    return res.json(result);
+});
+
+// Serve the main page
+app.get('/', (req, res) => {
+    res.sendFile('index.html', { root: 'public' });
+});
+
+// Expose the express app as a Firebase Function
+export const api = onRequest(app);

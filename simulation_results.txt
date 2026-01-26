@@ -1,16 +1,27 @@
-(node:3770) Warning: To load an ES module, set "type": "module" in the package.json or use the .mjs extension.
-(Use `node --trace-warnings ...` to show where the warning was created)
-/home/user/toomanychefs/dist/simulate_volatility.js:1
-import { GameEngine } from './src/GameEngine';
-^^^^^^
+--- Starting Final Validation Simulation (Full Game Loop) ---
+Simulating 1000000 main game rounds...
+... Progress: 10%
+... Progress: 20%
+... Progress: 30%
+... Progress: 40%
+... Progress: 50%
+... Progress: 60%
+... Progress: 70%
+... Progress: 80%
+... Progress: 90%
+... Progress: 100%
 
-SyntaxError: Cannot use import statement outside a module
-    at wrapSafe (node:internal/modules/cjs/loader:1378:20)
-    at Module._compile (node:internal/modules/cjs/loader:1428:41)
-    at Module._extensions..js (node:internal/modules/cjs/loader:1548:10)
-    at Module.load (node:internal/modules/cjs/loader:1288:32)
-    at Module._load (node:internal/modules/cjs/loader:1104:12)
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:173:12)
-    at node:internal/main/run_main_module:28:49
+--- Simulation Complete: Final Report ---
+Total Rounds Simulated: 1000000 in 44.74 seconds
 
-Node.js v20.18.1
+--- Final Economic & Volatility Analysis ---
+- Total Return to Player (RTP): 94.7171%
+    - Base Game Contribution: 81.1198%
+    - Bonus Game Contribution: 13.5973%
+- Hit Frequency (any win): 21.70%
+- Bonus Frequency: 1 in ~152.30 spins
+- Average Bonus Win: 20.71x
+- Max Win Recorded: 15028.00x
+- Total Bonus Triggers: 6566
+------------------------------------
+

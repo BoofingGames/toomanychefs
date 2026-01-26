@@ -12,7 +12,7 @@
   # VS Code extensions to install
   idx = {
     extensions = [
-      "dbaeumer.vscode-eslint"
+      "dbaeumer.vscode-eslint",
       "vscodevim.vim"
     ];
 
@@ -20,12 +20,11 @@
     workspace = {
       # Runs when a workspace is first created
       onCreate = {
-        npm-install = "npm install";
+        root-npm-install = "npm install";
+        functions-npm-install = "npm --prefix functions install";
       };
       # Runs every time the workspace is (re)started
-      onStart = {
-        # compile-ts = "tsc -p ."
-      };
+      onStart = {};
     };
   };
 }

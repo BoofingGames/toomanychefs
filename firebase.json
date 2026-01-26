@@ -16,7 +16,8 @@
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log"
-      ]
+      ],
+      "alwaysDeployFromSource": true
     },
     {
       "backendId": "toomanychefs",
@@ -27,7 +28,8 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         "functions"
-      ]
+      ],
+      "alwaysDeployFromSource": true
     }
   ],
   "emulators": {
@@ -39,25 +41,16 @@
     {
       "codebase": "default",
       "disallowLegacyRuntimeConfig": true,
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint",
-        "npm --prefix \"$RESOURCE_DIR\" run build"
-      ],
-      "source": "functions"
-    },
-    {
-      "source": "newbrocodebase",
-      "codebase": "newbrocodebase",
-      "disallowLegacyRuntimeConfig": true,
+      "source": "functions",
       "ignore": [
         "node_modules",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
+        "*.local",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        ".runtimeconfig.json"
       ]
     }
   ]

@@ -4,3 +4,18 @@ generate:
     - outputDir: ../../src/dataconnect-admin-generated
       package: "@dataconnect/admin-generated"
       packageJsonDir: ../..
+    - outputDir: ../../toomanychefs-codebase/src/dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ../../toomanychefs-codebase
+    - outputDir: ../../newbrocodebase/src/dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ../../newbrocodebase
+    - outputDir: ../../functions/src/dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ../../functions
+  javascriptSdk:
+    - outputDir: ../../src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../..
+      react: false
+      angular: false
