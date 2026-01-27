@@ -10,24 +10,12 @@
   },
   "apphosting": [
     {
-      "backendId": "toomanychefs",
+      "backendId": "chefs-backend",
       "rootDir": "/",
       "ignore": [
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log"
-      ],
-      "alwaysDeployFromSource": true
-    },
-    {
-      "backendId": "toomanychefs",
-      "rootDir": "/",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "functions"
       ],
       "alwaysDeployFromSource": true
     }
@@ -48,8 +36,6 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
         ".runtimeconfig.json"
       ]
     }

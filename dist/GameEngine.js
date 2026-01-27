@@ -33,147 +33,172 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameEngine = exports.BONUS_SPINS_AWARDED = exports.PAYTABLE = exports.SYMBOLS = void 0;
+exports.GameEngine = exports.BONUS_SPINS_AWARDED = void 0;
 const crypto = __importStar(require("crypto"));
-// =================================================================================
-// --- PHASE 2: Game Economy & Volatility Model (Iteration 6 - Final Calibration) ---
-// =================================================================================
-// --- 1. Symbol Definitions (LOCKED) ---
-exports.SYMBOLS = { '1': { id: '1' }, '2': { id: '2' }, '3': { id: '3' }, '4': { id: '4' }, '5': { id: '5' }, '6': { id: '6' }, '7': { id: '7' }, '8': { id: '8' }, 'W': { id: 'W' }, 'SC': { id: 'SC' } };
-// --- 2. Paytable (LOCKED - FINAL BASE GAME) ---
-exports.PAYTABLE = {
-    '1': [0.4, 0.8, 4], '2': [0.4, 0.8, 4], '3': [0.4, 0.8, 4],
-    '4': [0.8, 3, 12], '5': [0.8, 3, 12],
-    '6': [1.5, 6, 30], '7': [1.5, 6, 30],
-    '8': [4, 40, 1500],
+// --- CONFIGURATION ---
+const ROWS = 3;
+const COLS = 6;
+const INGREDIENT_SYMBOLS = ['tomato', 'onion', 'beef', 'bread', 'cheese'];
+const PAYTABLE = {
+    'cheese': { 3: 10, 4: 25, 5: 100 },
+    'beef': { 3: 8, 4: 20, 5: 80 },
+    'bread': { 3: 6, 4: 15, 5: 60 },
+    'onion': { 3: 4, 4: 10, 5: 40 },
+    'tomato': { 3: 2, 4: 5, 5: 20 },
 };
-// --- 3. Reel Strips (LOCKED) ---
-const REEL_STRIPS = [
-    ['1', '2', '8', '4', '5', '6', '1', '2', '3', 'W', '7', '8', '1', '2', '4', '5'],
-    ['1', '2', '3', '4', 'SC', '7', '1', '2', '3', '8', 'W', '6', '1', '2', '4', '5'],
-    ['1', '2', '3', '4', '5', '8', '1', '2', 'SC', '6', '7', 'W', '1', '2', '4', '5'],
-    ['1', '2', '3', '4', '5', '6', '1', '2', '3', '7', '8', 'SC', 'W', '2', '4', '5'],
-    ['1', '2', '3', '4', '5', '7', '1', '2', '3', 'W', '6', '8', '1', '2', '4', '5'],
-];
-// --- 4. Reel 6 Configurations (FINAL CALIBRATION) ---
-const REEL6_SYMBOLS = { 'BLANK': { multiplier: 1 }, '2X': { multiplier: 2 }, '3X': { multiplier: 3 }, '5X': { multiplier: 5 }, '10X': { multiplier: 10 } };
-const REEL6_WEIGHTS_BASE = [0.92, 0.05, 0.02, 0.008, 0.002]; // Base Game
-const REEL6_WEIGHTS_BONUS = [0.0, 0.60, 0.25, 0.10, 0.05]; // Bonus Game (Final Weights)
-// --- 5. Paylines & Bonus Config (LOCKED) ---
-const PAYLINES = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [0, 1, 2, 1, 0], [2, 1, 0, 1, 2],];
-const BONUS_TRIGGER_COUNT = 3;
+const PAYLINE_PATHS = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2]];
+const REEL6_MODIFIERS = [{ id: 'x500', weight: 1 }, { id: 'x100', weight: 1 }, { id: 'x10', weight: 8 }, { id: 'x2', weight: 40 }, { id: '86d', weight: 950 }];
+const REEL6_TOTAL_WEIGHT = REEL6_MODIFIERS.reduce((sum, mod) => sum + mod.weight, 0);
 exports.BONUS_SPINS_AWARDED = 10;
+// --- CORE LOGIC ---
 class GameEngine {
     constructor(serverSeed, clientSeed, nonce) {
-        this.rows = 3;
-        this.cols = 6;
-        this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null).map(() => ({ symbolId: null, isWild: false })));
-        this.prng = this.createPrng(serverSeed, clientSeed, nonce);
+        this.roundNonce = 0;
+        this.serverSeed = serverSeed;
+        this.clientSeed = clientSeed;
+        this.nonce = nonce;
     }
-    createPrng(serverSeed, clientSeed, nonce) {
-        const combinedSeed = `${serverSeed}-${clientSeed}-${nonce}`;
-        let seed = crypto.createHash('sha256').update(combinedSeed).digest();
-        return () => { const hash = crypto.createHash('sha256').update(seed).digest(); seed = hash; return hash.readUInt32BE(0) / (0xFFFFFFFF + 1); };
+    nextRandom() {
+        this.roundNonce++;
+        const hmac = crypto.createHmac('sha256', this.serverSeed);
+        hmac.update(`'''${this.clientSeed}'''-'''${this.nonce}'''-'''${this.roundNonce}'''`);
+        return parseInt(hmac.digest('hex').substring(0, 13), 16) / Math.pow(2, 52);
     }
-    resolveSpin(isBonusSpin = false) {
-        this.populateGrid(isBonusSpin);
-        const winningPaylines = this.evaluateWins();
-        const reel6Multiplier = this.getReel6Multiplier();
-        const totalWin = winningPaylines.reduce((sum, line) => sum + line.payout, 0);
-        const finalTotalWin = totalWin * reel6Multiplier;
-        const bonusTriggered = !isBonusSpin && this.checkForBonusTrigger();
-        return {
-            grid: this.grid.map(row => row.map(pt => pt.symbolId)),
-            winningPaylines,
-            reel6Multiplier,
-            finalTotalWin,
-            bonusTriggered,
-        };
-    }
-    populateGrid(isBonusSpin) {
-        for (let c = 0; c < this.cols - 1; c++) {
-            const reel = REEL_STRIPS[c];
-            const start = Math.floor(this.prng() * reel.length);
-            for (let r = 0; r < this.rows; r++) {
-                const symbolId = reel[(start + r) % reel.length];
-                this.grid[r][c] = { symbolId, isWild: symbolId === 'W' };
+    createSymbol(id) { return { id, uuid: crypto.randomUUID() }; }
+    generateInitialGrid() {
+        const grid = Array.from({ length: ROWS }, () => []);
+        for (let row = 0; row < ROWS; row++) {
+            for (let col = 0; col < COLS - 1; col++) {
+                grid[row][col] = this.createSymbol(INGREDIENT_SYMBOLS[Math.floor(this.nextRandom() * INGREDIENT_SYMBOLS.length)]);
             }
         }
-        const reel6Weights = isBonusSpin ? REEL6_WEIGHTS_BONUS : REEL6_WEIGHTS_BASE;
-        const reel6SymbolKey = this.getWeightedRandomSymbol(Object.keys(REEL6_SYMBOLS), reel6Weights);
-        for (let r = 0; r < this.rows; r++) {
-            this.grid[r][this.cols - 1] = { symbolId: null, isWild: false };
+        const rand = this.nextRandom() * REEL6_TOTAL_WEIGHT;
+        let cumulativeWeight = 0;
+        let reel6SymbolId = '86d';
+        for (const mod of REEL6_MODIFIERS) {
+            if (rand < (cumulativeWeight += mod.weight)) {
+                reel6SymbolId = mod.id;
+                break;
+            }
         }
-        this.grid[1][this.cols - 1] = { symbolId: reel6SymbolKey, isWild: false };
+        const reel6Symbol = this.createSymbol(reel6SymbolId);
+        for (let row = 0; row < ROWS; row++) {
+            grid[row][COLS - 1] = reel6Symbol;
+        }
+        return grid;
     }
-    evaluateWins(activeLines = PAYLINES.length) {
-        const results = [];
-        const linesToCheck = PAYLINES.slice(0, activeLines);
-        linesToCheck.forEach((linePath, lineIndex) => {
-            var _a;
-            let lineSymbolId = null;
-            for (let c = 0; c < linePath.length; c++) {
-                const point = this.grid[linePath[c]][c];
-                if (point && !point.isWild && point.symbolId !== 'SC') {
-                    lineSymbolId = point.symbolId;
-                    break;
+    evaluateWins(grid) {
+        var _a;
+        const wins = [];
+        for (const path of PAYLINE_PATHS) {
+            const lineSymbols = [];
+            for (let col = 0; col < COLS - 1; col++) {
+                const symbol = grid[path[col]][col];
+                if (symbol) {
+                    lineSymbols.push({ symbol, pos: { row: path[col], col } });
                 }
             }
-            if (!lineSymbolId) {
-                return;
-            }
-            let count = 0;
-            for (let c = 0; c < linePath.length; c++) {
-                const point = this.grid[linePath[c]][c];
-                if (point && (point.isWild || point.symbolId === lineSymbolId)) {
+            if (lineSymbols.length === 0)
+                continue;
+            const firstSymbol = lineSymbols[0].symbol;
+            if (firstSymbol.id === 'wild_sous_chef')
+                continue;
+            let count = 1;
+            const positions = [lineSymbols[0].pos];
+            for (let i = 1; i < lineSymbols.length; i++) {
+                const currentSymbol = lineSymbols[i].symbol;
+                if (currentSymbol.id === firstSymbol.id || currentSymbol.id === 'wild_sous_chef') {
                     count++;
+                    positions.push(lineSymbols[i].pos);
                 }
                 else {
                     break;
                 }
             }
-            if (count >= 3 && lineSymbolId) {
-                const payout = ((_a = exports.PAYTABLE[lineSymbolId]) === null || _a === void 0 ? void 0 : _a[count - 3]) || 0;
-                if (payout > 0) {
-                    results.push({
-                        lineId: lineIndex + 1,
-                        symbolId: lineSymbolId,
-                        count,
-                        payout,
-                        positions: linePath.slice(0, count).map((row, col) => ({ col, row }))
-                    });
-                }
+            if ((_a = PAYTABLE[firstSymbol.id]) === null || _a === void 0 ? void 0 : _a[count]) {
+                wins.push({ symbolId: firstSymbol.id, count, positions, winAmount: PAYTABLE[firstSymbol.id][count] });
             }
-        });
-        return results;
+        }
+        return wins;
     }
-    checkForBonusTrigger() {
+    evaluateReel6(paylines, grid) {
         var _a;
-        let scatterCount = 0;
-        for (let r = 0; r < this.rows; r++) {
-            for (let c = 0; c < this.cols - 1; c++) {
-                if (((_a = this.grid[r][c]) === null || _a === void 0 ? void 0 : _a.symbolId) === 'SC') {
-                    scatterCount++;
+        const fiveOfAKindPayline = paylines.find(p => p.count === 5 && p.positions.every(pos => { var _a; return ((_a = grid[pos.row][pos.col]) === null || _a === void 0 ? void 0 : _a.id) !== 'wild_sous_chef'; }));
+        if (!fiveOfAKindPayline)
+            return { multiplier: 1 };
+        const reel6Id = (_a = grid[0][COLS - 1]) === null || _a === void 0 ? void 0 : _a.id;
+        if (!reel6Id)
+            return { multiplier: 1 };
+        const multiplier = parseInt(reel6Id.replace('x', ''));
+        return isNaN(multiplier) ? { multiplier: 1 } : { multiplier, payline: fiveOfAKindPayline };
+    }
+    performCascade(grid, paylines) {
+        let newGrid = grid.map(row => [...row]);
+        const clearedPositions = [...new Set(paylines.flatMap(p => p.positions))];
+        clearedPositions.forEach(pos => { newGrid[pos.row][pos.col] = null; });
+        return { newGrid, clearedPositions };
+    }
+    refillGrid(grid) {
+        let newGrid = grid.map(row => [...row]);
+        for (let col = 0; col < COLS - 1; col++) {
+            for (let row = ROWS - 1; row >= 0; row--) {
+                if (newGrid[row][col] === null) {
+                    for (let r = row - 1; r >= 0; r--) {
+                        if (newGrid[r][col] !== null) {
+                            newGrid[row][col] = newGrid[r][col];
+                            newGrid[r][col] = null;
+                            break;
+                        }
+                    }
+                }
+                if (newGrid[row][col] === null) {
+                    newGrid[row][col] = this.createSymbol(INGREDIENT_SYMBOLS[Math.floor(this.nextRandom() * INGREDIENT_SYMBOLS.length)]);
                 }
             }
         }
-        return scatterCount >= BONUS_TRIGGER_COUNT;
+        return newGrid;
     }
-    getReel6Multiplier() {
-        var _a, _b;
-        const symbolId = this.grid[1][this.cols - 1].symbolId;
-        return symbolId ? (_b = (_a = REEL6_SYMBOLS[symbolId]) === null || _a === void 0 ? void 0 : _a.multiplier) !== null && _b !== void 0 ? _b : 1 : 1;
+    moveAndCollideWilds(grid) {
+        return { gridAfterWilds: grid, moves: [] };
     }
-    getWeightedRandomSymbol(symbols, weights) {
-        const rand = this.prng();
-        let cumulativeWeight = 0;
-        for (let i = 0; i < symbols.length; i++) {
-            cumulativeWeight += weights[i];
-            if (rand < cumulativeWeight) {
-                return symbols[i];
+    resolveSpin() {
+        const eventSequence = [];
+        let currentGrid = this.generateInitialGrid();
+        eventSequence.push({ type: 'INITIAL_SPIN', grid: currentGrid });
+        let totalWin = 0;
+        let isCascading = true;
+        while (isCascading) {
+            const paylines = this.evaluateWins(currentGrid);
+            if (paylines.length > 0) {
+                let currentCycleWin = paylines.reduce((sum, p) => sum + p.winAmount, 0);
+                eventSequence.push({ type: 'WIN', paylines, totalWin: currentCycleWin });
+                const { multiplier, payline: activatingPayline } = this.evaluateReel6(paylines, currentGrid);
+                if (multiplier > 1 && activatingPayline) {
+                    currentCycleWin *= multiplier;
+                    eventSequence.push({ type: 'REEL_6_ACTIVATION', multiplier, winningPayline: activatingPayline });
+                }
+                totalWin += currentCycleWin;
+                const { newGrid, clearedPositions } = this.performCascade(currentGrid, paylines);
+                currentGrid = newGrid;
+                eventSequence.push({ type: 'CASCADE', clearedPositions });
+                const { gridAfterWilds, chaosEvent, moves } = this.moveAndCollideWilds(currentGrid);
+                currentGrid = gridAfterWilds;
+                if (moves.length > 0)
+                    eventSequence.push({ type: 'WILD_MOVE', moves });
+                if (chaosEvent && chaosEvent.type === 'KITCHEN_CHAOS_COLLISION' && chaosEvent.outcome === 'BUST') {
+                    eventSequence.push(chaosEvent);
+                    totalWin = 0;
+                    break;
+                }
+                currentGrid = this.refillGrid(currentGrid);
+                eventSequence.push({ type: 'REFILL', newGrid: currentGrid });
+            }
+            else {
+                isCascading = false;
             }
         }
-        return symbols[symbols.length - 1];
+        eventSequence.push({ type: 'ROUND_SUMMARY', finalGrid: currentGrid, totalWin });
+        return { finalTotalWin: totalWin, finalGrid: currentGrid, eventSequence, bonusTriggered: false };
     }
 }
 exports.GameEngine = GameEngine;

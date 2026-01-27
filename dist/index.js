@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.api = exports.resolveBonus = exports.resolveBet = void 0;
+exports.api = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
 const express_1 = __importDefault(require("express"));
@@ -51,49 +51,17 @@ const dc = (0, data_connect_1.getDataConnect)(dataconnect_admin_generated_1.conn
 // Middleware
 app.use(express_1.default.static('public'));
 app.use(express_1.default.json());
-// Game Logic
-const resolveBet = (serverSeed, clientSeed, nonce) => {
-    const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, nonce);
-    const result = engine.resolveSpin(false);
-    return {
-        finalTotalWin: result.finalTotalWin,
-        grid: result.grid,
-        winningPaylines: result.winningPaylines,
-        reel6Multiplier: result.reel6Multiplier,
-        bonusTriggered: result.bonusTriggered,
-    };
-};
-exports.resolveBet = resolveBet;
-const resolveBonus = (serverSeed, clientSeed, nonce) => {
-    let totalBonusWin = 0;
-    const bonusSpins = [];
-    for (let i = 0; i < GameEngine_1.BONUS_SPINS_AWARDED; i++) {
-        const spinNonce = nonce + i + 1;
-        const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, spinNonce);
-        const spinResult = engine.resolveSpin(true);
-        totalBonusWin += spinResult.finalTotalWin;
-        bonusSpins.push(spinResult);
-    }
-    return {
-        totalBonusWin,
-        bonusSpins,
-    };
-};
-exports.resolveBonus = resolveBonus;
-// API route
+// API route for the game
 app.post('/api/spin', (req, res) => {
     logger.info("Spin request received", { body: req.body });
     const { clientSeed, nonce } = req.body;
-    if (!clientSeed || nonce === undefined) {
+    if (clientSeed === undefined || nonce === undefined) {
         logger.error("Bad request: clientSeed or nonce missing");
         return res.status(400).send({ error: 'clientSeed and nonce are required.' });
     }
-    const serverSeed = crypto.randomBytes(16).toString('hex');
-    const result = (0, exports.resolveBet)(serverSeed, clientSeed, nonce);
-    if (result.bonusTriggered) {
-        const bonusResult = (0, exports.resolveBonus)(serverSeed, clientSeed, nonce);
-        result.bonusResult = bonusResult;
-    }
+    const serverSeed = crypto.randomBytes(32).toString('hex');
+    const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, nonce);
+    const result = engine.resolveSpin();
     return res.json(result);
 });
 app.get("/api/movies", async (req, res) => {
@@ -104,6 +72,11 @@ app.get("/api/movies", async (req, res) => {
 app.get('/', (req, res) => {
     res.sendFile('index.html', { root: 'public' });
 });
-// Expose the express app as a Firebase Function
+// Start the server for App Hosting
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+    logger.info(`Server listening on port ${port}`);
+});
+// Export for Cloud Functions (optional, for local emulation)
 exports.api = (0, https_1.onRequest)(app);
 //# sourceMappingURL=index.js.map
