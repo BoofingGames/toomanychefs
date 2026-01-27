@@ -2,6 +2,7 @@
 import express, { Request, Response } from 'express';
 import * as crypto from 'crypto';
 import * as admin from 'firebase-admin';
+import * as path from 'path';
 import { GameEngine } from './GameEngine';
 import { listMovies, connectorConfig } from "./dataconnect-admin-generated";
 import { getDataConnect } from "firebase-admin/data-connect";
@@ -11,8 +12,10 @@ admin.initializeApp();
 const app = express();
 const dc = getDataConnect(connectorConfig);
 
+const publicDir = path.join(__dirname, 'public');
+
 // Middleware
-app.use(express.static('public'));
+app.use(express.static(publicDir));
 app.use(express.json());
 
 // API route for the game
@@ -38,7 +41,7 @@ app.get("/api/movies", async (req: Request, res: Response) => {
 
 // Serve the main page
 app.get('/', (req: Request, res: Response) => {
-    res.sendFile('index.html', { root: 'public' });
+    res.sendFile('index.html', { root: publicDir });
 });
 
 // Start the server for App Hosting
