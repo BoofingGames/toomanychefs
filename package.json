@@ -10,6 +10,9 @@
     "dev": "npm-run-all --parallel build start",
     "deploy": "firebase deploy"
   },
+  "engines": {
+    "node": "20"
+  },
   "dependencies": {
     "@dataconnect/admin-generated": "file:src/dataconnect-admin-generated",
     "@dataconnect/generated": "file:src/dataconnect-generated",

@@ -12,9 +12,6 @@
     "logs": "firebase functions:log"
   },
   "name": "functions",
-  "engines": {
-    "node": "24"
-  },
   "dependencies": {
     "@dataconnect/admin-generated": "file:src/dataconnect-admin-generated",
     "@genkit-ai/firebase": "^1.28.0",
