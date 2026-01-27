@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "postbuild": "cp -r public dist/",
     "start": "node dist/index.js",
     "dev": "npm-run-all --parallel build start",
     "deploy": "firebase deploy"
