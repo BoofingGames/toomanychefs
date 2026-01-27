@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slot Machine & Movie Catalog</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Provably Fair Slot Machine</h1>
+
+    <div id="controls">
+        <button id="toggleViewButton">View Movies</button>
+    </div>
+
+    <div id="slot-machine">
+        <div id="grid-container"></div>
+        <button id="spinButton">SPIN</button>
+        <div id="win-display">Total Win: 0.00</div>
+        <div id="provably-fair-display">
+            Server Seed: (spin to reveal)
+        </div>
+    </div>
+
+    <div id="movie-catalog" class="hidden">
+        <h2>Movie Catalog</h2>
+        <div id="movie-list"></div>
+        <hr>
+        <h3>Add a Review</h3>
+        <form id="add-review-form">
+            <div class="form-group">
+                <label for="movie-select">Movie:</label>
+                <select id="movie-select" name="movieId" required></select>
+            </div>
+            <div class="form-group">
+                <label for="reviewer-name">Your Name:</label>
+                <input type="text" id="reviewer-name" name="reviewer" required>
+            </div>
+            <div class="form-group">
+                <label for="review-rating">Rating (1-5):</label>
+                <input type="number" id="review-rating" name="rating" min="1" max="5" required>
+            </div>
+            <div class="form-group">
+                <label for="review-comment">Comment:</label>
+                <textarea id="review-comment" name="comment" required></textarea>
+            </div>
+            <button type="submit">Submit Review</button>
+        </form>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
