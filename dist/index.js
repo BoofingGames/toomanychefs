@@ -36,9 +36,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.api = void 0;
-const https_1 = require("firebase-functions/v2/https");
-const logger = __importStar(require("firebase-functions/logger"));
 const express_1 = __importDefault(require("express"));
 const crypto = __importStar(require("crypto"));
 const admin = __importStar(require("firebase-admin"));
@@ -53,10 +50,10 @@ app.use(express_1.default.static('public'));
 app.use(express_1.default.json());
 // API route for the game
 app.post('/api/spin', (req, res) => {
-    logger.info("Spin request received", { body: req.body });
+    console.log("Spin request received", { body: req.body });
     const { clientSeed, nonce } = req.body;
     if (clientSeed === undefined || nonce === undefined) {
-        logger.error("Bad request: clientSeed or nonce missing");
+        console.error("Bad request: clientSeed or nonce missing");
         return res.status(400).send({ error: 'clientSeed and nonce are required.' });
     }
     const serverSeed = crypto.randomBytes(32).toString('hex');
@@ -73,10 +70,8 @@ app.get('/', (req, res) => {
     res.sendFile('index.html', { root: 'public' });
 });
 // Start the server for App Hosting
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080;
 app.listen(port, () => {
-    logger.info(`Server listening on port ${port}`);
+    console.log(`Server listening on port ${port}`);
 });
-// Export for Cloud Functions (optional, for local emulation)
-exports.api = (0, https_1.onRequest)(app);
 //# sourceMappingURL=index.js.map
