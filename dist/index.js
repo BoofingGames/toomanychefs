@@ -32,38 +32,78 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.playRound = void 0;
-const functions = __importStar(require("firebase-functions"));
+exports.api = exports.resolveBonus = exports.resolveBet = void 0;
+const https_1 = require("firebase-functions/v2/https");
+const logger = __importStar(require("firebase-functions/logger"));
+const express_1 = __importDefault(require("express"));
+const crypto = __importStar(require("crypto"));
+const admin = __importStar(require("firebase-admin"));
 const GameEngine_1 = require("./GameEngine");
-// Initialize Firebase Admin SDK if you need to interact with other Firebase services.
-// import * as admin from 'firebase-admin';
-// admin.initializeApp();
-/**
- * The main Cloud Function to handle a single game round.
- *
- * @param {object} data - The request data, containing clientSeed and nonce.
- * @param {functions.https.CallableContext} context - The context of the function call.
- * @returns {RoundResult} The complete result of the game round.
- */
-exports.playRound = functions.https.onCall((data, context) => {
-    // Ensure the user is authenticated if required, e.g., for Stake.com integration.
-    // if (!context.auth) {
-    //     throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
-    // }
-    const { clientSeed, nonce } = data;
-    if (typeof clientSeed !== 'string' || typeof nonce !== 'number') {
-        throw new functions.https.HttpsError('invalid-argument', 'The function must be called with a string "clientSeed" and a number "nonce".');
+const dataconnect_admin_generated_1 = require("./dataconnect-admin-generated");
+const data_connect_1 = require("firebase-admin/data-connect");
+admin.initializeApp();
+const app = (0, express_1.default)();
+const dc = (0, data_connect_1.getDataConnect)(dataconnect_admin_generated_1.connectorConfig);
+// Middleware
+app.use(express_1.default.static('public'));
+app.use(express_1.default.json());
+// Game Logic
+const resolveBet = (serverSeed, clientSeed, nonce) => {
+    const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, nonce);
+    const result = engine.resolveSpin(false);
+    return {
+        finalTotalWin: result.finalTotalWin,
+        grid: result.grid,
+        winningPaylines: result.winningPaylines,
+        reel6Multiplier: result.reel6Multiplier,
+        bonusTriggered: result.bonusTriggered,
+    };
+};
+exports.resolveBet = resolveBet;
+const resolveBonus = (serverSeed, clientSeed, nonce) => {
+    let totalBonusWin = 0;
+    const bonusSpins = [];
+    for (let i = 0; i < GameEngine_1.BONUS_SPINS_AWARDED; i++) {
+        const spinNonce = nonce + i + 1;
+        const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, spinNonce);
+        const spinResult = engine.resolveSpin(true);
+        totalBonusWin += spinResult.finalTotalWin;
+        bonusSpins.push(spinResult);
     }
-    try {
-        const engine = new GameEngine_1.GameEngine();
-        const result = engine.resolveSpin(clientSeed, nonce);
-        return result;
+    return {
+        totalBonusWin,
+        bonusSpins,
+    };
+};
+exports.resolveBonus = resolveBonus;
+// API route
+app.post('/api/spin', (req, res) => {
+    logger.info("Spin request received", { body: req.body });
+    const { clientSeed, nonce } = req.body;
+    if (!clientSeed || nonce === undefined) {
+        logger.error("Bad request: clientSeed or nonce missing");
+        return res.status(400).send({ error: 'clientSeed and nonce are required.' });
     }
-    catch (error) {
-        // Log the error for debugging purposes.
-        console.error('An error occurred in the GameEngine:', error);
-        // Throw a generic error to the client to avoid leaking implementation details.
-        throw new functions.https.HttpsError('internal', 'An internal error occurred while processing the game round.');
+    const serverSeed = crypto.randomBytes(16).toString('hex');
+    const result = (0, exports.resolveBet)(serverSeed, clientSeed, nonce);
+    if (result.bonusTriggered) {
+        const bonusResult = (0, exports.resolveBonus)(serverSeed, clientSeed, nonce);
+        result.bonusResult = bonusResult;
     }
+    return res.json(result);
 });
+app.get("/api/movies", async (req, res) => {
+    const result = await (0, dataconnect_admin_generated_1.listMovies)(dc);
+    return res.json(result.data.movies);
+});
+// Serve the main page
+app.get('/', (req, res) => {
+    res.sendFile('index.html', { root: 'public' });
+});
+// Expose the express app as a Firebase Function
+exports.api = (0, https_1.onRequest)(app);
+//# sourceMappingURL=index.js.map

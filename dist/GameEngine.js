@@ -1,331 +1,180 @@
 "use strict";
-// ========== INTERFACES & TYPES ==========
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameEngine = void 0;
-// ========== CORE GAME ENGINE ==========
-class GameEngine {
-    constructor() {
-        this.grid = [];
-        this.wilds = [];
-        this.nextWildId = 0;
-        this.ROWS = 3;
-        this.REELS = 6; // 5 standard reels + 1 modifier reel
-        this.WILD_SPAWN_CHANCE = 0.15;
-        // --- Game Symbols Definition ---
-        this.symbols = {
-            'tomato': { id: 'tomato', payouts: [0, 0, 5, 15, 50, 150] },
-            'onion': { id: 'onion', payouts: [0, 0, 5, 15, 50, 150] },
-            'pepper': { id: 'pepper', payouts: [0, 0, 8, 20, 60, 200] },
-            'steak': { id: 'steak', payouts: [0, 0, 10, 30, 80, 300] },
-        };
-        this.symbolKeys = Object.keys(this.symbols);
-        // --- Reel 6 Math Strategy ---
-        this.reel6Modifiers = ['86d', 'x2', 'x10', 'x100', 'x500'];
-        this.reel6Weights = [0.85, 0.1, 0.044, 0.005, 0.001];
-        this.grid = Array.from({ length: this.ROWS }, () => Array(this.REELS).fill(null).map(() => ({ symbol: null, isWild: false })));
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
     }
-    /**
-     * Main entry point. Calculates the entire round sequence in one call.
-     */
-    resolveSpin(clientSeed, nonce) {
-        const serverSeed = "PROVABLY_FAIR_SERVER_SEED"; // Should be securely generated
-        const eventSequence = [];
-        let totalWin = 0;
-        let roundOver = false;
-        // 1. Initial Spin
-        this.populateGrid();
-        eventSequence.push({ type: 'INITIAL_SPIN', grid: this.copyGrid(), totalWin });
-        // 2. Main Game Loop
-        while (!roundOver) {
-            let winsThisCycle = 0;
-            const paylines = this.evaluateWins();
-            if (paylines.length > 0) {
-                // Wins were found, process them
-                const rawWin = this.calculateWin(paylines);
-                const reel6Multiplier = this.evaluateReel6(paylines);
-                winsThisCycle = rawWin * reel6Multiplier;
-                totalWin += winsThisCycle;
-                eventSequence.push({
-                    type: 'WINS_CALCULATED',
-                    grid: this.copyGrid(),
-                    totalWin,
-                    winThisEvent: winsThisCycle,
-                    highlightedPaylines: paylines
-                });
-                if (reel6Multiplier > 1) {
-                    eventSequence.push({
-                        type: 'REEL6_APPLY_MULTIPLIER',
-                        grid: this.copyGrid(),
-                        totalWin,
-                        activeMultiplier: reel6Multiplier
-                    });
-                }
-                this.removeWinningSymbols(paylines);
-                eventSequence.push({ type: 'CASCADE', grid: this.copyGrid(), totalWin });
-                this.addNewSymbols();
-                eventSequence.push({ type: 'SYMBOLS_DROPPED', grid: this.copyGrid(), totalWin });
-            }
-            // 3. Move Wilds and Check for Collisions
-            if (this.wilds.length > 0) {
-                this.moveWilds();
-                eventSequence.push({ type: 'WILD_MOVE', grid: this.copyGrid(), totalWin });
-                if (this.checkCollision()) {
-                    if (Math.random() < 0.5) { // 50% Bust
-                        eventSequence.push({ type: 'COLLISION_BUST', grid: this.copyGrid(), totalWin: 0 });
-                        totalWin = 0;
-                        roundOver = true;
-                        continue; // End the loop immediately
-                    }
-                    else { // 50% Merge
-                        this.mergeWilds();
-                        eventSequence.push({ type: 'COLLISION_MERGE', grid: this.copyGrid(), totalWin });
-                    }
-                }
-            }
-            // 4. Check if the round should end
-            const newPaylines = this.evaluateWins();
-            if (paylines.length === 0 && newPaylines.length === 0 && this.wilds.length === 0) {
-                roundOver = true;
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GameEngine = exports.BONUS_SPINS_AWARDED = exports.PAYTABLE = exports.SYMBOLS = void 0;
+const crypto = __importStar(require("crypto"));
+// =================================================================================
+// --- PHASE 2: Game Economy & Volatility Model (Iteration 6 - Final Calibration) ---
+// =================================================================================
+// --- 1. Symbol Definitions (LOCKED) ---
+exports.SYMBOLS = { '1': { id: '1' }, '2': { id: '2' }, '3': { id: '3' }, '4': { id: '4' }, '5': { id: '5' }, '6': { id: '6' }, '7': { id: '7' }, '8': { id: '8' }, 'W': { id: 'W' }, 'SC': { id: 'SC' } };
+// --- 2. Paytable (LOCKED - FINAL BASE GAME) ---
+exports.PAYTABLE = {
+    '1': [0.4, 0.8, 4], '2': [0.4, 0.8, 4], '3': [0.4, 0.8, 4],
+    '4': [0.8, 3, 12], '5': [0.8, 3, 12],
+    '6': [1.5, 6, 30], '7': [1.5, 6, 30],
+    '8': [4, 40, 1500],
+};
+// --- 3. Reel Strips (LOCKED) ---
+const REEL_STRIPS = [
+    ['1', '2', '8', '4', '5', '6', '1', '2', '3', 'W', '7', '8', '1', '2', '4', '5'],
+    ['1', '2', '3', '4', 'SC', '7', '1', '2', '3', '8', 'W', '6', '1', '2', '4', '5'],
+    ['1', '2', '3', '4', '5', '8', '1', '2', 'SC', '6', '7', 'W', '1', '2', '4', '5'],
+    ['1', '2', '3', '4', '5', '6', '1', '2', '3', '7', '8', 'SC', 'W', '2', '4', '5'],
+    ['1', '2', '3', '4', '5', '7', '1', '2', '3', 'W', '6', '8', '1', '2', '4', '5'],
+];
+// --- 4. Reel 6 Configurations (FINAL CALIBRATION) ---
+const REEL6_SYMBOLS = { 'BLANK': { multiplier: 1 }, '2X': { multiplier: 2 }, '3X': { multiplier: 3 }, '5X': { multiplier: 5 }, '10X': { multiplier: 10 } };
+const REEL6_WEIGHTS_BASE = [0.92, 0.05, 0.02, 0.008, 0.002]; // Base Game
+const REEL6_WEIGHTS_BONUS = [0.0, 0.60, 0.25, 0.10, 0.05]; // Bonus Game (Final Weights)
+// --- 5. Paylines & Bonus Config (LOCKED) ---
+const PAYLINES = [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [0, 1, 2, 1, 0], [2, 1, 0, 1, 2],];
+const BONUS_TRIGGER_COUNT = 3;
+exports.BONUS_SPINS_AWARDED = 10;
+class GameEngine {
+    constructor(serverSeed, clientSeed, nonce) {
+        this.rows = 3;
+        this.cols = 6;
+        this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null).map(() => ({ symbolId: null, isWild: false })));
+        this.prng = this.createPrng(serverSeed, clientSeed, nonce);
+    }
+    createPrng(serverSeed, clientSeed, nonce) {
+        const combinedSeed = `${serverSeed}-${clientSeed}-${nonce}`;
+        let seed = crypto.createHash('sha256').update(combinedSeed).digest();
+        return () => { const hash = crypto.createHash('sha256').update(seed).digest(); seed = hash; return hash.readUInt32BE(0) / (0xFFFFFFFF + 1); };
+    }
+    resolveSpin(isBonusSpin = false) {
+        this.populateGrid(isBonusSpin);
+        const winningPaylines = this.evaluateWins();
+        const reel6Multiplier = this.getReel6Multiplier();
+        const totalWin = winningPaylines.reduce((sum, line) => sum + line.payout, 0);
+        const finalTotalWin = totalWin * reel6Multiplier;
+        const bonusTriggered = !isBonusSpin && this.checkForBonusTrigger();
+        return {
+            grid: this.grid.map(row => row.map(pt => pt.symbolId)),
+            winningPaylines,
+            reel6Multiplier,
+            finalTotalWin,
+            bonusTriggered,
+        };
+    }
+    populateGrid(isBonusSpin) {
+        for (let c = 0; c < this.cols - 1; c++) {
+            const reel = REEL_STRIPS[c];
+            const start = Math.floor(this.prng() * reel.length);
+            for (let r = 0; r < this.rows; r++) {
+                const symbolId = reel[(start + r) % reel.length];
+                this.grid[r][c] = { symbolId, isWild: symbolId === 'W' };
             }
         }
-        eventSequence.push({ type: 'ROUND_END', grid: this.copyGrid(), totalWin });
-        return {
-            finalTotalWin: totalWin,
-            eventSequence,
-            provablyFair: { serverSeed, clientSeed, nonce, finalHash: "FINAL_HASH_PLACEHOLDER" }
-        };
+        const reel6Weights = isBonusSpin ? REEL6_WEIGHTS_BONUS : REEL6_WEIGHTS_BASE;
+        const reel6SymbolKey = this.getWeightedRandomSymbol(Object.keys(REEL6_SYMBOLS), reel6Weights);
+        for (let r = 0; r < this.rows; r++) {
+            this.grid[r][this.cols - 1] = { symbolId: null, isWild: false };
+        }
+        this.grid[1][this.cols - 1] = { symbolId: reel6SymbolKey, isWild: false };
     }
-    /**
-     * Finds all winning paylines on the current grid.
-     * A payline is 3 or more matching symbols from left-to-right on a single row.
-     * Wilds substitute for any symbol.
-     */
-    evaluateWins() {
-        const allPaylines = [];
-        for (let r = 0; r < this.ROWS; r++) {
-            const row = this.grid[r];
-            let lineSymbol = null;
-            let count = 0;
-            // Find the first non-wild symbol to determine the payline's symbol
-            for (let c = 0; c < this.REELS - 1; c++) {
-                if (row[c].symbol && !row[c].isWild) {
-                    lineSymbol = row[c].symbol;
+    evaluateWins(activeLines = PAYLINES.length) {
+        const results = [];
+        const linesToCheck = PAYLINES.slice(0, activeLines);
+        linesToCheck.forEach((linePath, lineIndex) => {
+            var _a;
+            let lineSymbolId = null;
+            for (let c = 0; c < linePath.length; c++) {
+                const point = this.grid[linePath[c]][c];
+                if (point && !point.isWild && point.symbolId !== 'SC') {
+                    lineSymbolId = point.symbolId;
                     break;
                 }
             }
-            // If no symbol found (e.g., all wilds), use the first wild as a placeholder
-            if (!lineSymbol && row[0].isWild) {
-                // In a real game, you might want a rule for all-wild lines.
-                // Here, we'll just say it can't form a line on its own.
-                continue;
+            if (!lineSymbolId) {
+                return;
             }
-            if (lineSymbol) {
-                // Count consecutive symbols or wilds from the left
-                for (let c = 0; c < this.REELS - 1; c++) {
-                    const point = row[c];
-                    if (point.isWild || (point.symbol && point.symbol.id === lineSymbol.id)) {
-                        count++;
-                    }
-                    else {
-                        break; // End of the consecutive line
-                    }
+            let count = 0;
+            for (let c = 0; c < linePath.length; c++) {
+                const point = this.grid[linePath[c]][c];
+                if (point && (point.isWild || point.symbolId === lineSymbolId)) {
+                    count++;
+                }
+                else {
+                    break;
                 }
             }
-            if (count >= 2) { // Minimum of 2 symbols for a payout
-                const winAmount = this.symbols[lineSymbol.id]?.payouts[count] ?? 0;
-                if (winAmount > 0) {
-                    allPaylines.push({
-                        symbolId: lineSymbol.id,
-                        count: count,
-                        isFiveOfAKind: count === 5,
-                        row: r,
-                        winAmount: winAmount,
+            if (count >= 3 && lineSymbolId) {
+                const payout = ((_a = exports.PAYTABLE[lineSymbolId]) === null || _a === void 0 ? void 0 : _a[count - 3]) || 0;
+                if (payout > 0) {
+                    results.push({
+                        lineId: lineIndex + 1,
+                        symbolId: lineSymbolId,
+                        count,
+                        payout,
+                        positions: linePath.slice(0, count).map((row, col) => ({ col, row }))
                     });
                 }
             }
-        }
-        return allPaylines;
+        });
+        return results;
     }
-    /**
-     * Calculates the total win from a list of paylines.
-     */
-    calculateWin(paylines) {
-        return paylines.reduce((total, line) => total + line.winAmount, 0);
-    }
-    /**
-     * Removes winning symbols from the grid, leaving nulls. Wilds are not removed.
-     */
-    removeWinningSymbols(paylines) {
-        for (const line of paylines) {
-            for (let c = 0; c < line.count; c++) {
-                const point = this.grid[line.row][c];
-                // We only remove symbols that are not walking wilds or merged mega wilds
-                if (!point.isWild) {
-                    this.grid[line.row][c].symbol = null;
+    checkForBonusTrigger() {
+        var _a;
+        let scatterCount = 0;
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols - 1; c++) {
+                if (((_a = this.grid[r][c]) === null || _a === void 0 ? void 0 : _a.symbolId) === 'SC') {
+                    scatterCount++;
                 }
             }
         }
+        return scatterCount >= BONUS_TRIGGER_COUNT;
     }
-    /**
-     * Fills empty spaces on the grid by dropping symbols from above,
-     * and generating new ones at the top.
-     */
-    addNewSymbols() {
-        for (let c = 0; c < this.REELS - 1; c++) { // Iterate reels
-            for (let r = this.ROWS - 1; r >= 0; r--) { // Iterate rows from bottom to top
-                if (this.grid[r][c].symbol === null) {
-                    // Find the first non-null symbol above the current empty spot
-                    let pullRow = -1;
-                    for (let rAbove = r - 1; rAbove >= 0; rAbove--) {
-                        if (this.grid[rAbove][c].symbol !== null) {
-                            pullRow = rAbove;
-                            break;
-                        }
-                    }
-                    if (pullRow !== -1) {
-                        // Symbol found above, move it down
-                        this.grid[r][c] = this.grid[pullRow][c];
-                        this.grid[pullRow][c] = { symbol: null, isWild: false };
-                    }
-                    else {
-                        // No symbol above, generate a new one at the top of the reel
-                        this.grid[r][c] = { symbol: this.getRandomSymbol(), isWild: false };
-                    }
-                }
+    getReel6Multiplier() {
+        var _a, _b;
+        const symbolId = this.grid[1][this.cols - 1].symbolId;
+        return symbolId ? (_b = (_a = REEL6_SYMBOLS[symbolId]) === null || _a === void 0 ? void 0 : _a.multiplier) !== null && _b !== void 0 ? _b : 1 : 1;
+    }
+    getWeightedRandomSymbol(symbols, weights) {
+        const rand = this.prng();
+        let cumulativeWeight = 0;
+        for (let i = 0; i < symbols.length; i++) {
+            cumulativeWeight += weights[i];
+            if (rand < cumulativeWeight) {
+                return symbols[i];
             }
         }
-    }
-    /**
-     * Merges colliding wilds into a 2x2 sticky wild block.
-     */
-    mergeWilds() {
-        const collisionPoints = new Map();
-        // Find all collision points
-        for (const wild of this.wilds) {
-            const posKey = `${wild.row},${wild.col}`;
-            if (!collisionPoints.has(posKey)) {
-                collisionPoints.set(posKey, []);
-            }
-            collisionPoints.get(posKey).push(wild);
-        }
-        // Process collisions
-        for (const [posKey, collidingWilds] of collisionPoints.entries()) {
-            if (collidingWilds.length > 1) {
-                const [row, col] = posKey.split(',').map(Number);
-                // Create 2x2 wild block around the collision point
-                for (let r = row; r < Math.min(this.ROWS, row + 2); r++) {
-                    for (let c = col; c < Math.min(this.REELS - 1, col + 2); c++) {
-                        this.grid[r][c] = {
-                            symbol: { id: 'sous_chef_wild', payouts: [] },
-                            isWild: true,
-                            isMegaWild: true // Mark as part of the merged block
-                        };
-                    }
-                }
-                // Remove the walking wilds that were part of this collision
-                for (const wildToRemove of collidingWilds) {
-                    const index = this.wilds.findIndex(w => w.id === wildToRemove.id);
-                    if (index !== -1) {
-                        this.wilds.splice(index, 1);
-                    }
-                }
-            }
-        }
-    }
-    /**
-     * Populates the initial grid, spawning wilds only on Reel 5.
-     */
-    populateGrid() {
-        this.wilds = [];
-        this.nextWildId = 0;
-        for (let r = 0; r < this.ROWS; r++) {
-            for (let c = 0; c < this.REELS - 1; c++) {
-                if (c === 4 && Math.random() < this.WILD_SPAWN_CHANCE) {
-                    const wildId = this.nextWildId++;
-                    const newWild = { id: wildId, row: r, col: c };
-                    this.wilds.push(newWild);
-                    this.grid[r][c] = {
-                        symbol: { id: 'sous_chef_wild', payouts: [] },
-                        isWild: true,
-                        wildInstanceId: wildId
-                    };
-                }
-                else {
-                    this.grid[r][c] = { symbol: this.getRandomSymbol(), isWild: false };
-                }
-            }
-        }
-    }
-    /**
-     * Moves all active walking wilds one step to the left.
-     */
-    moveWilds() {
-        for (let i = this.wilds.length - 1; i >= 0; i--) {
-            const wild = this.wilds[i];
-            // Clear current position if it isn't a merged MegaWild
-            if (!this.grid[wild.row][wild.col].isMegaWild) {
-                this.grid[wild.row][wild.col] = { symbol: null, isWild: false };
-            }
-            wild.col -= 1;
-            if (wild.col < 0) {
-                this.wilds.splice(i, 1); // Remove wild if it walks off the grid
-            }
-            else {
-                // Place wild in new position, preserving what's underneath if it's a megawild
-                this.grid[wild.row][wild.col] = {
-                    ...this.grid[wild.row][wild.col], // Keep existing symbol if any
-                    isWild: true,
-                    wildInstanceId: wild.id
-                };
-            }
-        }
-    }
-    /**
-     * Checks if any two walking wilds are on the same grid point.
-     */
-    checkCollision() {
-        const positions = new Set();
-        for (const wild of this.wilds) {
-            const posKey = `${wild.row},${wild.col}`;
-            if (positions.has(posKey)) {
-                return true; // Collision detected
-            }
-            positions.add(posKey);
-        }
-        return false;
-    }
-    /**
-     * Applies a multiplier from Reel 6 if a 5-of-a-kind win occurred.
-     */
-    evaluateReel6(paylines) {
-        if (paylines.some(p => p.isFiveOfAKind)) {
-            return this.getReel6Outcome();
-        }
-        return 1;
-    }
-    getReel6Outcome() {
-        const rand = Math.random();
-        let cumulative = 0;
-        for (let i = 0; i < this.reel6Weights.length; i++) {
-            cumulative += this.reel6Weights[i];
-            if (rand < cumulative) {
-                const modifier = this.reel6Modifiers[i];
-                if (modifier.startsWith('x')) {
-                    return parseInt(modifier.substring(1), 10);
-                }
-                else {
-                    return 1; // "86'd" acts as a x1 multiplier
-                }
-            }
-        }
-        return 1;
-    }
-    getRandomSymbol() {
-        const key = this.symbolKeys[Math.floor(Math.random() * this.symbolKeys.length)];
-        return this.symbols[key];
-    }
-    copyGrid() {
-        return this.grid.map(row => row.map(cell => ({ ...cell })));
+        return symbols[symbols.length - 1];
     }
 }
 exports.GameEngine = GameEngine;
+//# sourceMappingURL=GameEngine.js.map
