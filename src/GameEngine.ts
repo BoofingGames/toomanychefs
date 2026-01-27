@@ -54,11 +54,11 @@ export class GameEngine {
     private nextRandom(): number {
         this.roundNonce++;
         const hmac = crypto.createHmac('sha256', this.serverSeed);
-        hmac.update(`'''${this.clientSeed}'''-'''${this.nonce}'''-'''${this.roundNonce}'''`);
+        hmac.update(`'${this.clientSeed}'_'_'${this.nonce}'_'_'${this.roundNonce}'`);
         return parseInt(hmac.digest('hex').substring(0, 13), 16) / Math.pow(2, 52);
     }
 
-    private createSymbol(id: string): Symbol { return { id, uuid: crypto.randomUUID() }; }
+    private createSymbol(id: string): Symbol { return { id, uuid: crypto.randomBytes(16).toString('hex') }; }
 
     private generateInitialGrid(): Grid {
         const grid: Grid = Array.from({ length: ROWS }, () => []);
