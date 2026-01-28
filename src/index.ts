@@ -3,9 +3,9 @@ import express, { Request, Response } from 'express';
 import * as crypto from 'crypto';
 import * as admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
-import { GameEngine, GameState, SpinResult } from './GameEngine';
-import { BONUS_BUY_COST } from './GameEngine';
-import { listMovies, connectorConfig } from "./dataconnect-admin-generated";
+import { GameEngine, GameState, SpinResult } from './GameEngine.js';
+import { BONUS_BUY_COST } from './GameEngine.js';
+import { listMovies, connectorConfig } from "./dataconnect-admin-generated/index.js";
 import { getDataConnect } from "firebase-admin/data-connect";
 
 // --- Firebase and Express Initialization ---

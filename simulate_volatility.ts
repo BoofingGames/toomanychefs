@@ -1,6 +1,6 @@
 
 import * as crypto from 'crypto';
-import { GameEngine, BONUS_SPINS_AWARDED } from './src/GameEngine';
+import { GameEngine, BONUS_SPINS_AWARDED } from './src/GameEngine.js';
 
 // =================================================================================
 // --- PHASE 2: Final Validation Simulation (Full Game Loop) ---

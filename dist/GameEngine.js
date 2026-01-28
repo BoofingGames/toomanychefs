@@ -1,40 +1,4 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameEngine = exports.BONUS_BUY_COST = void 0;
-const crypto = __importStar(require("crypto"));
+import * as crypto from 'crypto';
 // =================================================================================
 // --- CONFIGURATION CONSTANTS ---
 // =================================================================================
@@ -44,7 +8,7 @@ const ICE_ROWS = 1;
 const MAX_ROWS = BASE_ROWS + ICE_ROWS;
 const ICE_BLOCKER_HP = 3;
 const BASE_BET_COST = 10;
-exports.BONUS_BUY_COST = 1000;
+export const BONUS_BUY_COST = 1000;
 const INGREDIENT_SYMBOLS = ['tomato', 'onion', 'bread', 'beef', 'cheese'];
 const SCATTER_REEL_CHANCE = 0.20;
 const WILD_SPAWN_CHANCE = 0.15;
@@ -56,9 +20,12 @@ const SPINS_PER_SCATTER = { 3: 10, 4: 15, 5: 20 };
 // =================================================================================
 // --- CORE LOGIC: GameEngine Class (STATEFUL & COMPLETE) ---
 // =================================================================================
-class GameEngine {
+export class GameEngine {
+    serverSeed;
+    clientSeed;
+    nonce;
+    roundNonce = 0;
     constructor(serverSeed, clientSeed, nonce) {
-        this.roundNonce = 0;
         this.serverSeed = serverSeed;
         this.clientSeed = clientSeed;
         this.nonce = nonce;
@@ -111,7 +78,6 @@ class GameEngine {
         return { newState: state, eventSequence: events };
     }
     _performCascadeAndRefill(state, paylines, events) {
-        var _a;
         const { newPaylines, event } = this._applyReel6Multiplier(state.currentGrid, paylines);
         if (event) {
             paylines = newPaylines;
@@ -131,7 +97,7 @@ class GameEngine {
                 state.activeRows = MAX_ROWS;
                 for (let r = 0; r < MAX_ROWS; r++)
                     for (let c = 0; c < COLS - 1; c++)
-                        if (((_a = state.currentGrid[r][c]) === null || _a === void 0 ? void 0 : _a.id) === 'ice_blocker')
+                        if (state.currentGrid[r][c]?.id === 'ice_blocker')
                             state.currentGrid[r][c] = null;
                 events.push({ type: 'REEL_EXPAND', newGrid: state.currentGrid });
             }
@@ -181,10 +147,10 @@ class GameEngine {
     _createSymbol(id) { return { id, uuid: crypto.randomBytes(16).toString('hex') }; }
     _createIceBlocker() { return { id: 'ice_blocker', uuid: crypto.randomBytes(16).toString('hex'), hp: ICE_BLOCKER_HP }; }
     _createWalkingWild(row, col) { return { id: 'wild_sous_chef', uuid: crypto.randomBytes(16).toString('hex'), row, col, multiplier: 1 }; }
-    _countWilds(grid) { return grid.flat().filter(s => (s === null || s === void 0 ? void 0 : s.id) === 'wild_sous_chef').length; }
-    _getScatterPositions(grid) { var _a; const pos = []; for (let r = 0; r < MAX_ROWS; r++)
+    _countWilds(grid) { return grid.flat().filter(s => s?.id === 'wild_sous_chef').length; }
+    _getScatterPositions(grid) { const pos = []; for (let r = 0; r < MAX_ROWS; r++)
         for (let c = 0; c < COLS - 1; c++)
-            if (((_a = grid[r][c]) === null || _a === void 0 ? void 0 : _a.id) === 'scatter_hat')
+            if (grid[r][c]?.id === 'scatter_hat')
                 pos.push({ row: r, col: c }); return pos; }
     _generateInitialGrid(isBonusBuy) {
         const grid = Array.from({ length: MAX_ROWS }, () => Array(COLS).fill(null));
@@ -232,7 +198,7 @@ class GameEngine {
             let positions = [{ row: path[0] + (MAX_ROWS - activeRows), col: 0 }];
             for (let col = 1; col < COLS - 1; col++) {
                 const symbolOnPath = grid[path[col] + (MAX_ROWS - activeRows)][col];
-                if ((symbolOnPath === null || symbolOnPath === void 0 ? void 0 : symbolOnPath.id) === firstSymbol.id) {
+                if (symbolOnPath?.id === firstSymbol.id) {
                     count++;
                     positions.push({ row: path[col] + (MAX_ROWS - activeRows), col: col });
                 }
@@ -246,15 +212,14 @@ class GameEngine {
         return paylines;
     }
     _handleSpatulaTransform(state, events) {
-        var _a, _b;
-        const reel6Id = (_a = state.currentGrid[ICE_ROWS][COLS - 1]) === null || _a === void 0 ? void 0 : _a.id;
+        const reel6Id = state.currentGrid[ICE_ROWS][COLS - 1]?.id;
         if (reel6Id === 'golden_spatula' && !state.spatulaUsedThisSpin) {
             const fromSymbol = INGREDIENT_SYMBOLS[Math.floor(this._nextRandom() * INGREDIENT_SYMBOLS.length)];
             const toSymbol = INGREDIENT_SYMBOLS[Math.floor(this._nextRandom() * INGREDIENT_SYMBOLS.length)];
             const positions = [];
             for (let r = 0; r < MAX_ROWS; r++)
                 for (let c = 0; c < COLS - 1; c++)
-                    if (((_b = state.currentGrid[r][c]) === null || _b === void 0 ? void 0 : _b.id) === fromSymbol)
+                    if (state.currentGrid[r][c]?.id === fromSymbol)
                         positions.push({ row: r, col: c });
             if (positions.length > 0) {
                 positions.forEach(p => state.currentGrid[p.row][p.col] = this._createSymbol(toSymbol));
@@ -264,9 +229,8 @@ class GameEngine {
         }
     }
     _applyReel6Multiplier(grid, paylines) {
-        var _a;
-        const reel6Id = (_a = grid[ICE_ROWS][COLS - 1]) === null || _a === void 0 ? void 0 : _a.id;
-        if (reel6Id === null || reel6Id === void 0 ? void 0 : reel6Id.startsWith('x')) {
+        const reel6Id = grid[ICE_ROWS][COLS - 1]?.id;
+        if (reel6Id?.startsWith('x')) {
             const multiplier = parseInt(reel6Id.substring(1));
             const highestPayline = paylines.reduce((max, p) => p.winAmount > max.winAmount ? p : max, paylines[0]);
             highestPayline.winAmount *= multiplier;
@@ -282,7 +246,7 @@ class GameEngine {
             for (let r = Math.max(0, pos.row - 1); r <= Math.min(MAX_ROWS - 1, pos.row + 1); r++) {
                 for (let c = Math.max(0, pos.col - 1); c <= Math.min(COLS - 2, pos.col + 1); c++) {
                     const cell = grid[r][c];
-                    if ((cell === null || cell === void 0 ? void 0 : cell.id) === 'ice_blocker') {
+                    if (cell?.id === 'ice_blocker') {
                         cell.hp--;
                         iceBreakEvents.push({ pos: { row: r, col: c }, newHp: cell.hp });
                     }
@@ -319,7 +283,7 @@ class GameEngine {
         for (let r = 0; r < MAX_ROWS; r++)
             for (let c = 0; c < COLS - 1; c++) {
                 const cell = grid[r][c];
-                if ((cell === null || cell === void 0 ? void 0 : cell.id) === 'wild_sous_chef') {
+                if (cell?.id === 'wild_sous_chef') {
                     const wild = cell;
                     const from = { row: r, col: c };
                     let to = { row: r, col: c - 1 };
@@ -336,5 +300,4 @@ class GameEngine {
         return { moves };
     }
 }
-exports.GameEngine = GameEngine;
 //# sourceMappingURL=GameEngine.js.map

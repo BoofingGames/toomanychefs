@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =================================================================================
-    // --- CORE STATEFUL GAME LOOP ---
+    // --- CORE STATEFUL GAME LOOP (Corrected Logic) ---
     // =================================================================================
 
     async function syncGameState() {
@@ -42,39 +42,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Kicks off the spin process.
     function handleSpin() {
         if (isSpinning) return;
         isSpinning = true;
         updateSpinButton();
-        _processSpinCycle();
+        executeAndAnimateSpin(); // Renamed for clarity
     }
 
-    async function _processSpinCycle() {
+    // The backend resolves the entire spin in one call. This function fetches the result
+    // and animates the sequence of events provided.
+    async function executeAndAnimateSpin() {
         try {
             const response = await fetch("/api/spin", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ clientSeed: Math.random().toString(36).substring(2), nonce: Date.now() })
             });
-            if (!response.ok) throw new Error((await response.json()).error || 'Spin failed');
+
+            if (!response.ok) {
+                // Try to parse the error message from the backend
+                const errorData = await response.json().catch(() => null); 
+                throw new Error(errorData?.error || 'Spin failed with an unknown error');
+            }
+            
             const result = await response.json();
 
+            // The backend returns the full sequence of events for a spin. We just need to animate it.
             await animateEventSequence(result.eventSequence, result.serverSeed);
 
-            const lastEvent = result.eventSequence[result.eventSequence.length - 1];
-            const roundIsOver = lastEvent.type === 'ROUND_END' || lastEvent.type === 'BONUS_SUMMARY';
-
-            if (roundIsOver) {
-                isSpinning = false;
-                await syncGameState();
-            } else {
-                setTimeout(_processSpinCycle, getAnimationSpeed(constants.autoSpinDelay));
-            }
-        } catch (e) {
-            console.error("Spin Cycle Error:", e);
-            alert(e.message);
+            // After the animation is complete, the spin is over. Re-sync with the server for the final state.
             isSpinning = false;
             await syncGameState();
+
+        } catch (e) {
+            console.error("Spin Error:", e);
+            alert(e.message);
+            isSpinning = false; // Ensure UI is unlocked on error
+            await syncGameState(); // Attempt to re-sync to a known good state
         }
     }
 
@@ -108,8 +113,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateBalance() {
         const { balance, roundWin, isInBonusMode, totalBonusWin } = gameState;
-        const winStr = isInBonusMode ? `Bonus Win: ${totalBonusWin.toFixed(2)}` : `Win: ${roundWin.toFixed(2)}`;
-        elements.winDisplay.textContent = `${winStr} | Balance: ${balance.toFixed(2)}`;
+        const winStr = isInBonusMode ? `Bonus Win: ${(totalBonusWin || 0).toFixed(2)}` : `Win: ${(roundWin || 0).toFixed(2)}`;
+        elements.winDisplay.textContent = `${winStr} | Balance: ${(balance || 0).toFixed(2)}`;
     }
 
     function updateSpinButton() {
@@ -131,7 +136,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update the local gameState as events come in, so the UI feels responsive.
             switch(event.type) {
                 case 'SPIN_START':
-                    // Deduct bet cost at the very start of the spin.
                     if (!gameState.isInBonusMode) {
                         gameState.balance -= constants.baseBetCost;
                     }
@@ -141,7 +145,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'WIN':
                     gameState.roundWin = event.currentRoundWin;
                     if (gameState.isInBonusMode) {
-                         // This is an approximation, the final balance is synced later.
                         gameState.totalBonusWin = (gameState.totalBonusWin || 0) + event.paylines.reduce((s,p) => s+p.winAmount,0);
                     }
                     updateBalance();
@@ -154,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // --- ANIMATION --- 
-            // Animate the visual representation of the event.
             switch (event.type) {
                 case 'SPIN_START':
                     updateGrid(event.grid);
