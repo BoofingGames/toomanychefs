@@ -53,7 +53,7 @@ const dc = (0, data_connect_1.getDataConnect)(dataconnect_admin_generated_1.conn
 app.use(express_1.default.static('public'));
 app.use(express_1.default.json());
 // =================================================================================
-// --- STATEFUL API ENDPOINTS (Corrected for Firestore) ---
+// --- STATEFUL API ENDPOINTS (Corrected for Firestore & TypeScript) ---
 // =================================================================================
 const getUserId = (req) => {
     // In a real application, this would come from an authenticated user token.
@@ -67,17 +67,20 @@ app.get('/api/state', async (req, res) => {
         if (!doc.exists) {
             console.log(`No state for ${userId}, creating...`);
             const initialState = GameEngine_1.GameEngine.getInitialState(userId);
-            // FIX: Serialize grid before initial save
             const stateToSave = Object.assign(Object.assign({}, initialState), { currentGrid: JSON.stringify(initialState.currentGrid) });
             await userStateRef.set(stateToSave);
-            return res.json(initialState); // Return original state to client
+            return res.json(initialState);
         }
-        // FIX: Deserialize currentGrid on read
         const stateFromDb = doc.data();
-        const currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
-                ? JSON.parse(stateFromDb.currentGrid)
-                : stateFromDb.currentGrid });
-        return res.json(currentState);
+        // --- FIX: Check for undefined before accessing properties ---
+        if (stateFromDb) {
+            const currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
+                    ? JSON.parse(stateFromDb.currentGrid)
+                    : stateFromDb.currentGrid });
+            return res.json(currentState);
+        }
+        // This case should ideally not be reached if doc.exists is true
+        return res.status(404).send({ error: 'Game state document exists but is empty.' });
     }
     catch (error) {
         console.error("Error getting state:", error);
@@ -94,12 +97,12 @@ app.post('/api/spin', async (req, res) => {
     try {
         const doc = await userStateRef.get();
         let currentState;
-        if (!doc.exists) {
+        const stateFromDb = doc.data();
+        if (!doc.exists || !stateFromDb) {
             currentState = GameEngine_1.GameEngine.getInitialState(userId);
         }
         else {
-            // FIX: Deserialize currentGrid on read
-            const stateFromDb = doc.data();
+            // --- FIX: Check for undefined is handled by the enclosing if/else ---
             currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
                     ? JSON.parse(stateFromDb.currentGrid)
                     : stateFromDb.currentGrid });
@@ -107,7 +110,6 @@ app.post('/api/spin', async (req, res) => {
         const serverSeed = crypto.randomBytes(32).toString('hex');
         const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, Number(nonce));
         const result = engine.processSpin(currentState);
-        // FIX: Serialize currentGrid before saving
         const stateToSave = Object.assign(Object.assign({}, result.newState), { currentGrid: JSON.stringify(result.newState.currentGrid) });
         await userStateRef.set(stateToSave);
         return res.json({
@@ -125,11 +127,11 @@ app.post('/api/buy-bonus', async (req, res) => {
     const userStateRef = db.collection('gameStates').doc(userId);
     try {
         const doc = await userStateRef.get();
-        if (!doc.exists) {
+        const stateFromDb = doc.data();
+        if (!doc.exists || !stateFromDb) {
             return res.status(404).send({ error: 'No game state found. Please spin first.' });
         }
-        // FIX: Deserialize currentGrid on read
-        const stateFromDb = doc.data();
+        // --- FIX: Check for undefined is handled by the enclosing if/else ---
         let currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
                 ? JSON.parse(stateFromDb.currentGrid)
                 : stateFromDb.currentGrid });
@@ -141,7 +143,6 @@ app.post('/api/buy-bonus', async (req, res) => {
         }
         currentState.balance -= GameEngine_2.BONUS_BUY_COST;
         currentState.requestBonusBuy = true;
-        // FIX: Serialize currentGrid before saving
         const stateToSave = Object.assign(Object.assign({}, currentState), { currentGrid: JSON.stringify(currentState.currentGrid) });
         await userStateRef.set(stateToSave);
         return res.json({
