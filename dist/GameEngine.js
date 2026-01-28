@@ -61,10 +61,10 @@ class GameEngine {
     nextRandom() {
         this.roundNonce++;
         const hmac = crypto.createHmac('sha256', this.serverSeed);
-        hmac.update(`'''${this.clientSeed}'''-'''${this.nonce}'''-'''${this.roundNonce}'''`);
+        hmac.update(`'${this.clientSeed}'_'_'${this.nonce}'_'_'${this.roundNonce}'`);
         return parseInt(hmac.digest('hex').substring(0, 13), 16) / Math.pow(2, 52);
     }
-    createSymbol(id) { return { id, uuid: crypto.randomUUID() }; }
+    createSymbol(id) { return { id, uuid: crypto.randomBytes(16).toString('hex') }; }
     generateInitialGrid() {
         const grid = Array.from({ length: ROWS }, () => []);
         for (let row = 0; row < ROWS; row++) {

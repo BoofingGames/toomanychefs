@@ -59,7 +59,8 @@ app.post('/api/spin', (req, res) => {
     const serverSeed = crypto.randomBytes(32).toString('hex');
     const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, nonce);
     const result = engine.resolveSpin();
-    return res.json(result);
+    // Combine the engine result with the server seed for the response
+    return res.json(Object.assign(Object.assign({}, result), { serverSeed: serverSeed }));
 });
 app.get("/api/movies", async (req, res) => {
     const result = await (0, dataconnect_admin_generated_1.listMovies)(dc);

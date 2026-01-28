@@ -186,9 +186,130 @@ document.addEventListener('DOMContentLoaded', () => {
 
     
     // =================================================================================
-    // --- Slot Machine Logic (remains unchanged) ---
+    // --- Slot Machine Logic (Corrected for new API response) ---
     // =================================================================================
-    function createGrid(){for(let i=0;i<constants.rows*constants.cols;i++){const e=document.createElement("div");e.classList.add("cell"),elements.gridContainer.appendChild(e)}}function updateGrid(e){const t=elements.gridContainer.children;for(let n=0;n<constants.rows;n++)for(let o=0;o<constants.cols;o++){const s=n*constants.cols+o;t[s].classList.remove("win"),t[s].innerText=e[n][o]||''}}function highlightWins(e){e&&e.forEach(e=>{e.positions.forEach(e=>{const n=e.row*constants.cols+e.col;elements.gridContainer.children[n].classList.add("win")})})}async function handleSpin(){startSpinAnimation(),elements.winDisplay.textContent="Spinning...",elements.provablyFairDisplay.textContent="Server Seed: (spinning...)";try{const e=await fetch("/api/spin",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientSeed:Math.random().toString(36).substring(2),nonce:Date.now()})}),t=await e.json();stopSpinAnimation(),updateGrid(t.grid),highlightWins(t.winningPaylines),elements.winDisplay.textContent=`Total Win: ${t.finalTotalWin.toFixed(2)}`,elements.provablyFairDisplay.textContent=`Server Seed: ${t.serverSeed}`,t.bonusResult&&setTimeout(()=>{elements.winDisplay.textContent="BONUS TRIGGERED! 10 Free Spins!",setTimeout(()=>playBonusSequence(t.bonusResult,t.serverSeed),2e3)},2e3)}catch(e){console.error("Spin Error:",e),stopSpinAnimation(),elements.winDisplay.textContent="Error!"}}function startSpinAnimation(){state.isSpinning=!0,elements.spinButton.disabled=!0;const e=setInterval(()=>{if(!state.isSpinning)return void clearInterval(e);for(let t=0;t<elements.gridContainer.children.length;t++)elements.gridContainer.children[t].innerText=Math.floor(9*Math.random())+1},50)}function stopSpinAnimation(){state.isSpinning=!1,elements.spinButton.disabled=!1}function playBonusSequence(e,t){elements.spinButton.disabled=!0;let n=0,o=0;!function s(){if(n>=e.bonusSpins.length)return elements.winDisplay.textContent=`Total Bonus Win: ${e.totalBonusWin.toFixed(2)}`,elements.spinButton.disabled=!1,void(elements.provablyFairDisplay.textContent=`Server Seed: ${t}`);const i=e.bonusSpins[n];o+=i.finalTotalWin,updateGrid(i.grid),highlightWins(i.winningPaylines),elements.winDisplay.textContent=`Bonus Spin ${n+1}/${e.bonusSpins.length} | Win: ${o.toFixed(2)}`,n++,setTimeout(s,1e3)}()}
+
+    function createGrid() {
+        for (let i = 0; i < constants.rows * constants.cols; i++) {
+            const cell = document.createElement("div");
+            cell.classList.add("cell");
+            elements.gridContainer.appendChild(cell);
+        }
+    }
+
+    function updateGrid(grid) {
+        const cells = elements.gridContainer.children;
+        if (!grid) {
+            console.error("updateGrid called with invalid grid:", grid);
+            return;
+        }
+        for (let row = 0; row < constants.rows; row++) {
+            for (let col = 0; col < constants.cols; col++) {
+                const cellIndex = row * constants.cols + col;
+                const cell = cells[cellIndex];
+                cell.classList.remove("win");
+                // The symbol object now has an 'id' property we can display
+                cell.innerText = grid[row] && grid[row][col] ? (grid[row][col].id || '') : '';
+            }
+        }
+    }
+
+    function highlightWins(eventSequence) {
+        if (!eventSequence) return;
+        // Find all 'WIN' events and get their paylines
+        const winningPaylines = eventSequence
+            .filter(event => event.type === 'WIN')
+            .flatMap(event => event.paylines);
+
+        winningPaylines.forEach(payline => {
+            payline.positions.forEach(pos => {
+                const cellIndex = pos.row * constants.cols + pos.col;
+                elements.gridContainer.children[cellIndex].classList.add("win");
+            });
+        });
+    }
+
+    async function handleSpin() {
+        startSpinAnimation();
+        elements.winDisplay.textContent = "Spinning...";
+        elements.provablyFairDisplay.textContent = "Server Seed: (spinning...)";
+        try {
+            const response = await fetch("/api/spin", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ clientSeed: Math.random().toString(36).substring(2), nonce: Date.now() }),
+            });
+            const result = await response.json();
+            stopSpinAnimation();
+
+            // --- CORRECTED DATA HANDLING ---
+            updateGrid(result.finalGrid);
+            highlightWins(result.eventSequence); // Pass the whole event sequence
+
+            elements.winDisplay.textContent = `Total Win: ${result.finalTotalWin.toFixed(2)}`;
+            elements.provablyFairDisplay.textContent = `Server Seed: ${result.serverSeed}`;
+
+            // Bonus logic remains speculative as it's not fully implemented, but this is safer
+            if (result.bonusTriggered && result.bonusResult) {
+                setTimeout(() => {
+                    elements.winDisplay.textContent = "BONUS TRIGGERED! 10 Free Spins!";
+                    setTimeout(() => playBonusSequence(result.bonusResult, result.serverSeed), 2000);
+                }, 2000);
+            }
+
+        } catch (e) {
+            console.error("Spin Error:", e);
+            stopSpinAnimation();
+            elements.winDisplay.textContent = "Error!";
+        }
+    }
+
+    function startSpinAnimation() {
+        state.isSpinning = true;
+        elements.spinButton.disabled = true;
+        const intervalId = setInterval(() => {
+            if (!state.isSpinning) {
+                return void clearInterval(intervalId);
+            }
+            for (let i = 0; i < elements.gridContainer.children.length; i++) {
+                elements.gridContainer.children[i].innerText = Math.floor(Math.random() * 9) + 1;
+            }
+        }, 50);
+    }
+
+    function stopSpinAnimation() {
+        state.isSpinning = false;
+        elements.spinButton.disabled = false;
+    }
+
+    // This function might need further adjustments based on the exact bonusResult structure
+    function playBonusSequence(bonusResult, serverSeed) {
+        elements.spinButton.disabled = true;
+        let currentSpinIndex = 0;
+        let totalBonusWin = 0;
+
+        function playNextSpin() {
+            if (currentSpinIndex >= bonusResult.bonusSpins.length) {
+                elements.winDisplay.textContent = `Total Bonus Win: ${bonusResult.totalBonusWin.toFixed(2)}`;
+                elements.spinButton.disabled = false;
+                elements.provablyFairDisplay.textContent = `Server Seed: ${serverSeed}`;
+                return;
+            }
+
+            const spinData = bonusResult.bonusSpins[currentSpinIndex];
+            totalBonusWin += spinData.finalTotalWin;
+
+            updateGrid(spinData.finalGrid); 
+            highlightWins(spinData.eventSequence);
+
+            elements.winDisplay.textContent = `Bonus Spin ${currentSpinIndex + 1}/${bonusResult.bonusSpins.length} | Win: ${totalBonusWin.toFixed(2)}`;
+
+            currentSpinIndex++;
+            setTimeout(playNextSpin, 1000);
+        }
+        playNextSpin();
+    }
+
 
     // --- Initial Setup & Event Delegation ---
     createGrid();
