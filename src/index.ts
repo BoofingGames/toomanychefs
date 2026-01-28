@@ -19,7 +19,7 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // =================================================================================
-// --- STATEFUL API ENDPOINTS (Corrected) ---
+// --- STATEFUL API ENDPOINTS (Corrected for Firestore & TypeScript) ---
 // =================================================================================
 
 const getUserId = (req: Request): string => {
@@ -30,15 +30,31 @@ const getUserId = (req: Request): string => {
 app.get('/api/state', async (req: Request, res: Response) => {
     const userId = getUserId(req);
     const userStateRef = db.collection('gameStates').doc(userId);
+
     try {
         const doc = await userStateRef.get();
         if (!doc.exists) {
+            console.log(`No state for ${userId}, creating...`);
             const initialState = GameEngine.getInitialState(userId);
-            await userStateRef.set(initialState);
+            const stateToSave = { ...initialState, currentGrid: JSON.stringify(initialState.currentGrid) };
+            await userStateRef.set(stateToSave);
             return res.json(initialState);
         }
-        // --- FIX: Added missing return statement ---
-        return res.json(doc.data());
+
+        const stateFromDb = doc.data();
+        // --- FIX: Check for undefined before accessing properties ---
+        if (stateFromDb) {
+            const currentState = {
+                ...stateFromDb,
+                currentGrid: typeof stateFromDb.currentGrid === 'string' 
+                    ? JSON.parse(stateFromDb.currentGrid) 
+                    : stateFromDb.currentGrid
+            };
+            return res.json(currentState);
+        }
+        // This case should ideally not be reached if doc.exists is true
+        return res.status(404).send({ error: 'Game state document exists but is empty.' });
+
     } catch (error) {
         console.error("Error getting state:", error);
         return res.status(500).send({ error: 'Failed to retrieve game state.' });
@@ -57,18 +73,27 @@ app.post('/api/spin', async (req: Request, res: Response) => {
     try {
         const doc = await userStateRef.get();
         let currentState: GameState;
-        if (!doc.exists) {
+        const stateFromDb = doc.data();
+
+        if (!doc.exists || !stateFromDb) {
             currentState = GameEngine.getInitialState(userId);
         } else {
-            currentState = doc.data() as GameState;
+            // --- FIX: Check for undefined is handled by the enclosing if/else ---
+            currentState = {
+                ...stateFromDb,
+                currentGrid: typeof stateFromDb.currentGrid === 'string' 
+                    ? JSON.parse(stateFromDb.currentGrid) 
+                    : stateFromDb.currentGrid
+            } as GameState;
         }
 
         const serverSeed = crypto.randomBytes(32).toString('hex');
-        // --- FIX: Ensure nonce is a number ---
         const engine = new GameEngine(serverSeed, clientSeed, Number(nonce));
         const result: SpinResult = engine.processSpin(currentState);
 
-        await userStateRef.set(result.newState);
+        const stateToSave = { ...result.newState, currentGrid: JSON.stringify(result.newState.currentGrid) };
+        await userStateRef.set(stateToSave);
+
         return res.json({
             eventSequence: result.eventSequence,
             serverSeed: serverSeed
@@ -86,11 +111,20 @@ app.post('/api/buy-bonus', async (req: Request, res: Response) => {
 
     try {
         const doc = await userStateRef.get();
-        if (!doc.exists) {
+        const stateFromDb = doc.data();
+
+        if (!doc.exists || !stateFromDb) {
             return res.status(404).send({ error: 'No game state found. Please spin first.' });
         }
 
-        let currentState = doc.data() as GameState;
+        // --- FIX: Check for undefined is handled by the enclosing if/else ---
+        let currentState = {
+            ...stateFromDb,
+            currentGrid: typeof stateFromDb.currentGrid === 'string' 
+                ? JSON.parse(stateFromDb.currentGrid) 
+                : stateFromDb.currentGrid
+        } as GameState;
+
         if (currentState.balance < BONUS_BUY_COST) {
             return res.status(400).send({ error: 'Insufficient balance for Bonus Buy.' });
         }
@@ -101,7 +135,8 @@ app.post('/api/buy-bonus', async (req: Request, res: Response) => {
         currentState.balance -= BONUS_BUY_COST;
         currentState.requestBonusBuy = true;
 
-        await userStateRef.set(currentState);
+        const stateToSave = { ...currentState, currentGrid: JSON.stringify(currentState.currentGrid) };
+        await userStateRef.set(stateToSave);
 
         return res.json({
             success: true,

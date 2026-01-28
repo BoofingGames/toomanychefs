@@ -53,7 +53,7 @@ const dc = (0, data_connect_1.getDataConnect)(dataconnect_admin_generated_1.conn
 app.use(express_1.default.static('public'));
 app.use(express_1.default.json());
 // =================================================================================
-// --- STATEFUL API ENDPOINTS (Corrected) ---
+// --- STATEFUL API ENDPOINTS (Corrected for Firestore) ---
 // =================================================================================
 const getUserId = (req) => {
     // In a real application, this would come from an authenticated user token.
@@ -65,12 +65,19 @@ app.get('/api/state', async (req, res) => {
     try {
         const doc = await userStateRef.get();
         if (!doc.exists) {
+            console.log(`No state for ${userId}, creating...`);
             const initialState = GameEngine_1.GameEngine.getInitialState(userId);
-            await userStateRef.set(initialState);
-            return res.json(initialState);
+            // FIX: Serialize grid before initial save
+            const stateToSave = Object.assign(Object.assign({}, initialState), { currentGrid: JSON.stringify(initialState.currentGrid) });
+            await userStateRef.set(stateToSave);
+            return res.json(initialState); // Return original state to client
         }
-        // --- FIX: Added missing return statement ---
-        return res.json(doc.data());
+        // FIX: Deserialize currentGrid on read
+        const stateFromDb = doc.data();
+        const currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
+                ? JSON.parse(stateFromDb.currentGrid)
+                : stateFromDb.currentGrid });
+        return res.json(currentState);
     }
     catch (error) {
         console.error("Error getting state:", error);
@@ -91,13 +98,18 @@ app.post('/api/spin', async (req, res) => {
             currentState = GameEngine_1.GameEngine.getInitialState(userId);
         }
         else {
-            currentState = doc.data();
+            // FIX: Deserialize currentGrid on read
+            const stateFromDb = doc.data();
+            currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
+                    ? JSON.parse(stateFromDb.currentGrid)
+                    : stateFromDb.currentGrid });
         }
         const serverSeed = crypto.randomBytes(32).toString('hex');
-        // --- FIX: Ensure nonce is a number ---
         const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, Number(nonce));
         const result = engine.processSpin(currentState);
-        await userStateRef.set(result.newState);
+        // FIX: Serialize currentGrid before saving
+        const stateToSave = Object.assign(Object.assign({}, result.newState), { currentGrid: JSON.stringify(result.newState.currentGrid) });
+        await userStateRef.set(stateToSave);
         return res.json({
             eventSequence: result.eventSequence,
             serverSeed: serverSeed
@@ -116,7 +128,11 @@ app.post('/api/buy-bonus', async (req, res) => {
         if (!doc.exists) {
             return res.status(404).send({ error: 'No game state found. Please spin first.' });
         }
-        let currentState = doc.data();
+        // FIX: Deserialize currentGrid on read
+        const stateFromDb = doc.data();
+        let currentState = Object.assign(Object.assign({}, stateFromDb), { currentGrid: typeof stateFromDb.currentGrid === 'string'
+                ? JSON.parse(stateFromDb.currentGrid)
+                : stateFromDb.currentGrid });
         if (currentState.balance < GameEngine_2.BONUS_BUY_COST) {
             return res.status(400).send({ error: 'Insufficient balance for Bonus Buy.' });
         }
@@ -125,7 +141,9 @@ app.post('/api/buy-bonus', async (req, res) => {
         }
         currentState.balance -= GameEngine_2.BONUS_BUY_COST;
         currentState.requestBonusBuy = true;
-        await userStateRef.set(currentState);
+        // FIX: Serialize currentGrid before saving
+        const stateToSave = Object.assign(Object.assign({}, currentState), { currentGrid: JSON.stringify(currentState.currentGrid) });
+        await userStateRef.set(stateToSave);
         return res.json({
             success: true,
             newBalance: currentState.balance,
