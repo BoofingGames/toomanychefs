@@ -1,7 +1,9 @@
 
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Main Application State (will be synced with backend) ---
+    // --- Main Application State (synced with backend) ---
     let gameState = {};
+    let isSpinning = false; // Prevents USER from starting a new spin while a cycle is active.
+    let turboState = 0; // 0: Normal, 1: Turbo, 2: Super
 
     // --- DOM Element References ---
     const elements = {
@@ -16,114 +18,77 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelBonusBuy: document.getElementById('cancel-bonus-buy'),
     };
 
-    const constants = { 
-        rows: 4, 
-        cols: 6,
-        baseAnimationSpeed: 147, 
+    const constants = {
+        rows: 4, cols: 6, baseAnimationSpeed: 147, baseBetCost: 10,
         turboMultipliers: [1, 1.5, 2],
-        autoSpinDelay: 500 // ms delay before auto-spinning for cascades/respins
+        autoSpinDelay: 300
     };
-    let turboState = 0; // 0: Normal, 1: Turbo, 2: Super
-    let isSpinning = false;
 
     // =================================================================================
-    // --- CORE GAME LOOP (STATEFUL) ---
+    // --- CORE STATEFUL GAME LOOP ---
     // =================================================================================
 
-    /**
-     * Fetches the latest game state from the server and updates the UI.
-     * Essential for session resumption.
-     */
     async function syncGameState() {
         try {
-            isSpinning = true;
             const response = await fetch('/api/state');
-            if (!response.ok) throw new Error('Failed to fetch state');
+            if (!response.ok) throw new Error(`Server Error: ${response.statusText}`);
             gameState = await response.json();
-
-            console.log("Initial state synced:", gameState);
+            console.log("State synced:", gameState);
             updateGrid(gameState.currentGrid);
             updateUIFromState();
-
         } catch (error) {
             console.error('Could not sync game state:', error);
             elements.winDisplay.textContent = "Error: Connection failed.";
-        } finally {
-            isSpinning = false;
-            updateSpinButton();
         }
     }
 
-    /**
-     * The new core game loop. Handles a single action and recursively calls itself if the round is not over.
-     */
-    async function handleSpin() {
+    function handleSpin() {
         if (isSpinning) return;
         isSpinning = true;
         updateSpinButton();
+        _processSpinCycle();
+    }
 
+    async function _processSpinCycle() {
         try {
             const response = await fetch("/api/spin", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ clientSeed: Math.random().toString(36).substring(2), nonce: Date.now() })
             });
-            
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Spin failed');
-            }
-
+            if (!response.ok) throw new Error((await response.json()).error || 'Spin failed');
             const result = await response.json();
 
-            // Animate the sequence of events from this single action
             await animateEventSequence(result.eventSequence, result.serverSeed);
-            
-            // Check if the round is over. The last event tells us everything.
+
             const lastEvent = result.eventSequence[result.eventSequence.length - 1];
+            const roundIsOver = lastEvent.type === 'ROUND_END' || lastEvent.type === 'BONUS_SUMMARY';
 
-            // If the round is NOT over (e.g., a cascade or wild move happened), automatically spin again.
-            if (lastEvent.type !== 'ROUND_END' && lastEvent.type !== 'BONUS_SUMMARY') {
-                setTimeout(handleSpin, getAnimationSpeed(constants.autoSpinDelay));
-            } else {
-                // The round is complete, wait for user input.
+            if (roundIsOver) {
                 isSpinning = false;
-                await syncGameState(); // Re-sync to get final balance and state
+                await syncGameState();
+            } else {
+                setTimeout(_processSpinCycle, getAnimationSpeed(constants.autoSpinDelay));
             }
-
         } catch (e) {
-            console.error("Spin Error:", e);
+            console.error("Spin Cycle Error:", e);
             alert(e.message);
             isSpinning = false;
-            await syncGameState(); // Re-sync to correct state after an error
+            await syncGameState();
         }
     }
-    
-    /**
-     * Initiates the Bonus Buy feature.
-     */
+
     async function executeBonusBuy() {
         hideBonusBuyModal();
         if (isSpinning) return;
         isSpinning = true;
         updateSpinButton();
-
         try {
-            const response = await fetch("/api/buy-bonus", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" }
-            });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Bonus Buy failed');
-            }
-            const result = await response.json();
-            alert(result.message);
-            await syncGameState(); // Sync to show deducted balance and new state
-            
+            const response = await fetch("/api/buy-bonus", { method: "POST", headers: { "Content-Type": "application/json" } });
+            if (!response.ok) throw new Error((await response.json()).error || 'Bonus Buy failed');
+            await syncGameState(); // Sync to show the deducted balance
+            alert('Bonus Buy initiated! Press SPIN to play.');
         } catch (e) {
-            console.error("Bonus Buy Error:", e);
             alert(e.message);
         } finally {
             isSpinning = false;
@@ -132,104 +97,110 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =================================================================================
-    // --- UI & Animation ---
+    // --- UI, ANIMATION & OPTIMISTIC STATE UPDATES ---
     // =================================================================================
 
     function updateUIFromState() {
-        updateBalance(gameState.balance, gameState.roundWin, gameState.isInBonusMode, gameState.totalBonusWin);
+        if (!gameState) return;
+        updateBalance();
         updateSpinButton();
     }
 
-    function updateBalance(balance, roundWin = 0, inBonus = false, bonusWin = 0) {
-        let winStr = `Win: ${roundWin.toFixed(2)}`;
-        if (inBonus) {
-            winStr = `Bonus Win: ${bonusWin.toFixed(2)}`;
-        }
+    function updateBalance() {
+        const { balance, roundWin, isInBonusMode, totalBonusWin } = gameState;
+        const winStr = isInBonusMode ? `Bonus Win: ${totalBonusWin.toFixed(2)}` : `Win: ${roundWin.toFixed(2)}`;
         elements.winDisplay.textContent = `${winStr} | Balance: ${balance.toFixed(2)}`;
     }
 
     function updateSpinButton() {
-        elements.spinButton.disabled = isSpinning;
-        elements.bonusBuyButton.disabled = isSpinning || (gameState.spinInProgress);
-
-        if (isSpinning) {
+        const inProgress = isSpinning || gameState.spinInProgress;
+        elements.spinButton.disabled = inProgress;
+        elements.bonusBuyButton.disabled = inProgress;
+        if (inProgress) {
             elements.spinButton.textContent = 'SPINNING...';
         } else if (gameState.isInBonusMode) {
             elements.spinButton.textContent = `FREE SPIN (${gameState.remainingFreeSpins} left)`;
-        } else if (gameState.spinInProgress) {
-            elements.spinButton.textContent = 'NEXT'; // For cascades/respins
         } else {
             elements.spinButton.textContent = 'SPIN';
         }
     }
 
-    function toggleTurbo() {
-        turboState = (turboState + 1) % 3;
-        elements.turboButton.innerHTML = ['⚡️', '⚡️⚡️', '⚡️⚡️⚡️'][turboState];
-    }
-    
-    function getAnimationSpeed(base) {
-        return base / constants.turboMultipliers[turboState];
-    }
-
     async function animateEventSequence(events, serverSeed) {
         for (const event of events) {
-             // Update local state based on events as they happen
-            if (event.type === 'ROUND_END') {
-                gameState.balance = event.balance;
+            // --- OPTIMISTIC STATE UPDATE --- 
+            // Update the local gameState as events come in, so the UI feels responsive.
+            switch(event.type) {
+                case 'SPIN_START':
+                    // Deduct bet cost at the very start of the spin.
+                    if (!gameState.isInBonusMode) {
+                        gameState.balance -= constants.baseBetCost;
+                    }
+                    gameState.roundWin = 0;
+                    updateBalance();
+                    break;
+                case 'WIN':
+                    gameState.roundWin = event.currentRoundWin;
+                    if (gameState.isInBonusMode) {
+                         // This is an approximation, the final balance is synced later.
+                        gameState.totalBonusWin = (gameState.totalBonusWin || 0) + event.paylines.reduce((s,p) => s+p.winAmount,0);
+                    }
+                    updateBalance();
+                    break;
+                case 'ROUND_END':
+                    gameState.balance = event.balance; // Final balance from server
+                    gameState.roundWin = 0;
+                    updateBalance();
+                    break;
             }
-            // --- Call animation functions for each event type (abbreviated) ---
-            // console.log('Animating event:', event.type);
-            await sleep(getAnimationSpeed(100)); // Simplified delay
-        }
-        updateGrid(events[events.length - 1].finalGrid || gameState.currentGrid);
-        updateUIFromState();
-        elements.provablyFairDisplay.textContent = `Server Seed: ${serverSeed}`;
-    }
 
-    // =================================================================================
-    // --- Grid Drawing & Modal Logic ---
-    // =================================================================================
-
-    function createSymbolElement(symbol) {
-        if (!symbol) return '';
-        return `${symbol.id}`;
-    }
-    
-    function updateGrid(grid) {
-        if (!grid) return;
-        gameState.currentGrid = grid;
-        for (let row = 0; row < constants.rows; row++) {
-            for (let col = 0; col < constants.cols; col++) {
-                const cell = elements.gridContainer.children[row * constants.cols + col];
-                if (cell) {
-                    cell.className = 'cell'; 
-                    cell.innerHTML = createSymbolElement(grid[row]?.[col]);
-                }
+            // --- ANIMATION --- 
+            // Animate the visual representation of the event.
+            switch (event.type) {
+                case 'SPIN_START':
+                    updateGrid(event.grid);
+                    await animateInitialSpin();
+                    break;
+                case 'WIN':
+                    await animateWin(event.paylines);
+                    break;
+                case 'CASCADE':
+                    await animateCascade(event.clearedPositions);
+                    break;
+                case 'REFILL':
+                    updateGrid(event.newGrid);
+                    await sleep(getAnimationSpeed(200));
+                    break;
+                case 'BONUS_TRIGGERED':
+                    await animateBonusTriggered(event.spinCount);
+                    break;
+                case 'BONUS_SUMMARY':
+                    alert(`Bonus complete! Total win: ${event.totalBonusWin.toFixed(2)}`);
+                    break;
+                default:
+                    await sleep(getAnimationSpeed(100));
+                    break;
             }
         }
+        if (serverSeed) elements.provablyFairDisplay.textContent = `Server Seed: ${serverSeed}`;
     }
 
-    function createGrid() {
-        elements.gridContainer.innerHTML = '';
-        for (let i = 0; i < constants.rows * constants.cols; i++) {
-            const cell = document.createElement("div");
-            cell.classList.add("cell");
-            elements.gridContainer.appendChild(cell);
-        }
-    }
+    // --- Animation & Helper Functions (Unchanged) ---
+    const getAnimationSpeed = (base) => base / constants.turboMultipliers[turboState];
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const getCell = (row, col) => elements.gridContainer.children[row * constants.cols + col];
+    const toggleTurbo = () => { turboState = (turboState + 1) % 3; elements.turboButton.innerHTML = ['⚡️', '⚡️⚡️', '⚡️⚡️⚡️'][turboState]; };
+    const showBonusBuyModal = () => elements.bonusBuyModal.classList.remove('hidden');
+    const hideBonusBuyModal = () => elements.bonusBuyModal.classList.add('hidden');
+    const updateGrid = (grid) => { if (!grid) return; gameState.currentGrid = grid; for (let r = 0; r < constants.rows; r++) for (let c = 0; c < constants.cols; c++) { const cell = getCell(r, c); if (cell) cell.innerHTML = grid[r]?.[c]?.id?.replace('_', ' ') || ''; } };
+    const createGrid = () => { elements.gridContainer.innerHTML = ''; for (let i = 0; i < constants.rows * constants.cols; i++) { const cell = document.createElement("div"); cell.classList.add('cell'); elements.gridContainer.appendChild(cell); } };
+    const animateInitialSpin = async () => { for (let c = 0; c < constants.cols; c++) { for (let r = 0; r < constants.rows; r++) { const cell = getCell(r, c); if (!cell) continue; cell.style.transition = 'none'; cell.style.transform = `translateY(-200px)`; await sleep(5); cell.style.transition = 'transform 0.5s ease-out'; cell.style.transform = 'translateY(0)'; } await sleep(getAnimationSpeed(50)); } };
+    const animateWin = async (paylines) => { paylines.forEach(p => p.positions.forEach(pos => getCell(pos.row, pos.col)?.classList.add('win'))); await sleep(getAnimationSpeed(400)); paylines.forEach(p => p.positions.forEach(pos => getCell(pos.row, pos.col)?.classList.remove('win'))); };
+    const animateCascade = async (clearedPositions) => { clearedPositions.forEach(pos => { const cell = getCell(pos.row, pos.col); if(cell) { cell.classList.remove('win'); cell.classList.add('cascade'); } }); await sleep(getAnimationSpeed(300)); clearedPositions.forEach(pos => { const cell = getCell(pos.row, pos.col); if(cell) cell.innerHTML = ''; }); };
+    const animateBonusTriggered = async (spinCount) => { elements.winDisplay.textContent = `BONUS! ${spinCount} FREE SPINS!`; await sleep(2000); };
 
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    function showBonusBuyModal() { elements.bonusBuyModal.classList.remove('hidden'); }
-    function hideBonusBuyModal() { elements.bonusBuyModal.classList.add('hidden'); }
-
-    // =================================================================================
     // --- Initial Setup & Event Listeners ---
-    // =================================================================================
-
     createGrid();
-    syncGameState(); // Load the game state on page load!
-
+    syncGameState();
     elements.spinButton.addEventListener('click', handleSpin);
     elements.turboButton.addEventListener('click', toggleTurbo);
     elements.bonusBuyButton.addEventListener('click', showBonusBuyModal);
