@@ -1,10 +1,9 @@
+
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Main Application State ---
-    const state = {
-        isSpinning: false,
-        isMovieView: false,
-        editingReviewId: null,
-    };
+    // --- Main Application State (synced with backend) ---
+    let gameState = {};
+    let isSpinning = false; // Prevents USER from starting a new spin while a cycle is active.
+    let turboState = 0; // 0: Normal, 1: Turbo, 2: Super
 
     // --- DOM Element References ---
     const elements = {
@@ -12,321 +11,199 @@ document.addEventListener('DOMContentLoaded', () => {
         spinButton: document.getElementById('spinButton'),
         winDisplay: document.getElementById('win-display'),
         provablyFairDisplay: document.getElementById('provably-fair-display'),
-        toggleViewButton: document.getElementById('toggleViewButton'),
-        slotMachine: document.getElementById('slot-machine'),
-        movieCatalog: document.getElementById('movie-catalog'),
-        movieList: document.getElementById('movie-list'),
-        addReviewForm: document.getElementById('add-review-form'),
-        movieSelect: document.getElementById('movie-select'),
+        turboButton: document.getElementById('turbo-button'),
+        bonusBuyButton: document.getElementById('bonus-buy-button'),
+        bonusBuyModal: document.getElementById('bonus-buy-modal'),
+        confirmBonusBuy: document.getElementById('confirm-bonus-buy'),
+        cancelBonusBuy: document.getElementById('cancel-bonus-buy'),
     };
 
-    const constants = { rows: 3, cols: 6 };
+    const constants = {
+        rows: 4, cols: 6, baseAnimationSpeed: 147, baseBetCost: 10,
+        turboMultipliers: [1, 1.5, 2],
+        autoSpinDelay: 300
+    };
 
     // =================================================================================
-    // --- View Toggling ---
+    // --- CORE STATEFUL GAME LOOP ---
     // =================================================================================
 
-    function toggleView() {
-        state.isMovieView = !state.isMovieView;
-        elements.slotMachine.classList.toggle('hidden', state.isMovieView);
-        elements.movieCatalog.classList.toggle('hidden', !state.isMovieView);
-        elements.toggleViewButton.textContent = state.isMovieView ? 'Play Slot Machine' : 'View Movies';
-        document.querySelector('h1').textContent = state.isMovieView ? 'Movie Catalog' : 'Provably Fair Slot Machine';
-
-        if (state.isMovieView) {
-            fetchAndRenderMovies();
-        }
-    }
-
-    // =================================================================================
-    // --- Movie & Review Logic ---
-    // =================================================================================
-
-    function renderReviews(reviews) {
-        if (!reviews || reviews.length === 0) return '<p>No reviews yet.</p>';
-        return reviews.map(review => `
-            <div class="review-item" id="review-${review.id}">
-                <div class="review-content">
-                    <strong>${review.reviewer}</strong> (<span class="rating-value">${review.rating}</span>/5 stars):
-                    <p class="comment-text">${review.comment}</p>
-                </div>
-                <div class="review-actions">
-                    <button class="edit-review-btn" data-review-id="${review.id}">Edit</button>
-                    <button class="delete-review-btn" data-review-id="${review.id}">Delete</button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function populateMovieSelect(movies) {
-        elements.movieSelect.innerHTML = '';
-        movies.forEach(movie => {
-            const option = document.createElement('option');
-            option.value = movie.id;
-            option.textContent = movie.title;
-            elements.movieSelect.appendChild(option);
-        });
-    }
-
-    async function fetchAndRenderMovies() {
+    async function syncGameState() {
         try {
-            elements.movieList.innerHTML = '<p>Loading movies...</p>';
-            const response = await fetch('/api/movies');
-            const movies = await response.json();
-
-            elements.movieList.innerHTML = '';
-            if (!movies || movies.length === 0) {
-                elements.movieList.innerHTML = '<p>No movies found.</p>';
-                return;
-            }
-            
-            populateMovieSelect(movies);
-
-            movies.forEach(movie => {
-                const movieEl = document.createElement('div');
-                movieEl.className = 'movie-item';
-                movieEl.id = `movie-${movie.id}`;
-                movieEl.innerHTML = `
-                    <h3>${movie.title} (${movie.release_year})</h3>
-                    <p><strong>Rating:</strong> ${movie.rating}/10</p>
-                    <p>${movie.description}</p>
-                    <div class="reviews-section">
-                        <h4>Reviews</h4>
-                        ${renderReviews(movie.reviews)}
-                    </div>
-                `;
-                elements.movieList.appendChild(movieEl);
-            });
+            const response = await fetch('/api/state');
+            if (!response.ok) throw new Error(`Server Error: ${response.statusText}`);
+            gameState = await response.json();
+            console.log("State synced:", gameState);
+            updateGrid(gameState.currentGrid);
+            updateUIFromState();
         } catch (error) {
-            console.error('Error fetching movies:', error);
-            elements.movieList.innerHTML = '<p>Error loading movies. Please try again.</p>';
+            console.error('Could not sync game state:', error);
+            elements.winDisplay.textContent = "Error: Connection failed.";
         }
     }
 
-    async function handleAddReview(event) {
-        event.preventDefault();
-        const formData = new FormData(elements.addReviewForm);
-        const reviewData = Object.fromEntries(formData.entries());
-        try {
-            const response = await fetch('/api/reviews', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(reviewData),
-            });
-            if (!response.ok) throw new Error('Failed to submit review');
-            elements.addReviewForm.reset();
-            await fetchAndRenderMovies();
-        } catch (error) {
-            console.error('Error submitting review:', error);
-            alert('Could not submit your review. Please try again.');
-        }
+    function handleSpin() {
+        if (isSpinning) return;
+        isSpinning = true;
+        updateSpinButton();
+        _processSpinCycle();
     }
 
-    async function handleDeleteReview(reviewId) {
-        if (!confirm('Are you sure you want to delete this review?')) return;
-        try {
-            const response = await fetch(`/api/reviews/${reviewId}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error('Failed to delete review');
-            await fetchAndRenderMovies();
-        } catch (error) {
-            console.error('Error deleting review:', error);
-            alert('Could not delete the review. Please try again.');
-        }
-    }
-
-    function handleEditReview(reviewId) {
-        if (state.editingReviewId) {
-            // If we're already editing a review, cancel that one first
-            handleCancelEdit(state.editingReviewId);
-        }
-        state.editingReviewId = reviewId;
-        const reviewEl = document.getElementById(`review-${reviewId}`);
-        reviewEl.classList.add('editing');
-
-        const ratingSpan = reviewEl.querySelector('.rating-value');
-        const commentP = reviewEl.querySelector('.comment-text');
-        const currentRating = ratingSpan.textContent;
-        const currentComment = commentP.textContent;
-
-        ratingSpan.innerHTML = `<input type="number" class="edit-rating-input" value="${currentRating}" min="1" max="5">`;
-        commentP.innerHTML = `<textarea class="edit-comment-textarea">${currentComment}</textarea>`;
-
-        const actionsDiv = reviewEl.querySelector('.review-actions');
-        actionsDiv.innerHTML = `
-            <button class="save-review-btn" data-review-id="${reviewId}">Save</button>
-            <button class="cancel-edit-btn" data-review-id="${reviewId}">Cancel</button>
-        `;
-    }
-
-    async function handleSaveReview(reviewId) {
-        const reviewEl = document.getElementById(`review-${reviewId}`);
-        const newRating = reviewEl.querySelector('.edit-rating-input').value;
-        const newComment = reviewEl.querySelector('.edit-comment-textarea').value;
-
-        try {
-            const response = await fetch(`/api/reviews/${reviewId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ rating: newRating, comment: newComment }),
-            });
-            if (!response.ok) throw new Error('Failed to save review');
-            await fetchAndRenderMovies(); // Easiest way to refresh the view
-        } catch (error) {
-            console.error('Error saving review:', error);
-            alert('Could not save your changes. Please try again.');
-        } finally {
-            state.editingReviewId = null;
-        }
-    }
-
-    function handleCancelEdit(reviewId) {
-        state.editingReviewId = null;
-        fetchAndRenderMovies(); // Just refresh the whole list to revert changes
-    }
-
-    
-    // =================================================================================
-    // --- Slot Machine Logic (Corrected for new API response) ---
-    // =================================================================================
-
-    function createGrid() {
-        for (let i = 0; i < constants.rows * constants.cols; i++) {
-            const cell = document.createElement("div");
-            cell.classList.add("cell");
-            elements.gridContainer.appendChild(cell);
-        }
-    }
-
-    function updateGrid(grid) {
-        const cells = elements.gridContainer.children;
-        if (!grid) {
-            console.error("updateGrid called with invalid grid:", grid);
-            return;
-        }
-        for (let row = 0; row < constants.rows; row++) {
-            for (let col = 0; col < constants.cols; col++) {
-                const cellIndex = row * constants.cols + col;
-                const cell = cells[cellIndex];
-                cell.classList.remove("win");
-                // The symbol object now has an 'id' property we can display
-                cell.innerText = grid[row] && grid[row][col] ? (grid[row][col].id || '') : '';
-            }
-        }
-    }
-
-    function highlightWins(eventSequence) {
-        if (!eventSequence) return;
-        // Find all 'WIN' events and get their paylines
-        const winningPaylines = eventSequence
-            .filter(event => event.type === 'WIN')
-            .flatMap(event => event.paylines);
-
-        winningPaylines.forEach(payline => {
-            payline.positions.forEach(pos => {
-                const cellIndex = pos.row * constants.cols + pos.col;
-                elements.gridContainer.children[cellIndex].classList.add("win");
-            });
-        });
-    }
-
-    async function handleSpin() {
-        startSpinAnimation();
-        elements.winDisplay.textContent = "Spinning...";
-        elements.provablyFairDisplay.textContent = "Server Seed: (spinning...)";
+    async function _processSpinCycle() {
         try {
             const response = await fetch("/api/spin", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clientSeed: Math.random().toString(36).substring(2), nonce: Date.now() }),
+                body: JSON.stringify({ clientSeed: Math.random().toString(36).substring(2), nonce: Date.now() })
             });
+            if (!response.ok) throw new Error((await response.json()).error || 'Spin failed');
             const result = await response.json();
-            stopSpinAnimation();
 
-            // --- CORRECTED DATA HANDLING ---
-            updateGrid(result.finalGrid);
-            highlightWins(result.eventSequence); // Pass the whole event sequence
+            await animateEventSequence(result.eventSequence, result.serverSeed);
 
-            elements.winDisplay.textContent = `Total Win: ${result.finalTotalWin.toFixed(2)}`;
-            elements.provablyFairDisplay.textContent = `Server Seed: ${result.serverSeed}`;
+            const lastEvent = result.eventSequence[result.eventSequence.length - 1];
+            const roundIsOver = lastEvent.type === 'ROUND_END' || lastEvent.type === 'BONUS_SUMMARY';
 
-            // Bonus logic remains speculative as it's not fully implemented, but this is safer
-            if (result.bonusTriggered && result.bonusResult) {
-                setTimeout(() => {
-                    elements.winDisplay.textContent = "BONUS TRIGGERED! 10 Free Spins!";
-                    setTimeout(() => playBonusSequence(result.bonusResult, result.serverSeed), 2000);
-                }, 2000);
+            if (roundIsOver) {
+                isSpinning = false;
+                await syncGameState();
+            } else {
+                setTimeout(_processSpinCycle, getAnimationSpeed(constants.autoSpinDelay));
             }
-
         } catch (e) {
-            console.error("Spin Error:", e);
-            stopSpinAnimation();
-            elements.winDisplay.textContent = "Error!";
+            console.error("Spin Cycle Error:", e);
+            alert(e.message);
+            isSpinning = false;
+            await syncGameState();
         }
     }
 
-    function startSpinAnimation() {
-        state.isSpinning = true;
-        elements.spinButton.disabled = true;
-        const intervalId = setInterval(() => {
-            if (!state.isSpinning) {
-                return void clearInterval(intervalId);
-            }
-            for (let i = 0; i < elements.gridContainer.children.length; i++) {
-                elements.gridContainer.children[i].innerText = Math.floor(Math.random() * 9) + 1;
-            }
-        }, 50);
-    }
-
-    function stopSpinAnimation() {
-        state.isSpinning = false;
-        elements.spinButton.disabled = false;
-    }
-
-    // This function might need further adjustments based on the exact bonusResult structure
-    function playBonusSequence(bonusResult, serverSeed) {
-        elements.spinButton.disabled = true;
-        let currentSpinIndex = 0;
-        let totalBonusWin = 0;
-
-        function playNextSpin() {
-            if (currentSpinIndex >= bonusResult.bonusSpins.length) {
-                elements.winDisplay.textContent = `Total Bonus Win: ${bonusResult.totalBonusWin.toFixed(2)}`;
-                elements.spinButton.disabled = false;
-                elements.provablyFairDisplay.textContent = `Server Seed: ${serverSeed}`;
-                return;
-            }
-
-            const spinData = bonusResult.bonusSpins[currentSpinIndex];
-            totalBonusWin += spinData.finalTotalWin;
-
-            updateGrid(spinData.finalGrid); 
-            highlightWins(spinData.eventSequence);
-
-            elements.winDisplay.textContent = `Bonus Spin ${currentSpinIndex + 1}/${bonusResult.bonusSpins.length} | Win: ${totalBonusWin.toFixed(2)}`;
-
-            currentSpinIndex++;
-            setTimeout(playNextSpin, 1000);
+    async function executeBonusBuy() {
+        hideBonusBuyModal();
+        if (isSpinning) return;
+        isSpinning = true;
+        updateSpinButton();
+        try {
+            const response = await fetch("/api/buy-bonus", { method: "POST", headers: { "Content-Type": "application/json" } });
+            if (!response.ok) throw new Error((await response.json()).error || 'Bonus Buy failed');
+            await syncGameState(); // Sync to show the deducted balance
+            alert('Bonus Buy initiated! Press SPIN to play.');
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            isSpinning = false;
+            updateSpinButton();
         }
-        playNextSpin();
     }
 
+    // =================================================================================
+    // --- UI, ANIMATION & OPTIMISTIC STATE UPDATES ---
+    // =================================================================================
 
-    // --- Initial Setup & Event Delegation ---
+    function updateUIFromState() {
+        if (!gameState) return;
+        updateBalance();
+        updateSpinButton();
+    }
+
+    function updateBalance() {
+        const { balance, roundWin, isInBonusMode, totalBonusWin } = gameState;
+        const winStr = isInBonusMode ? `Bonus Win: ${totalBonusWin.toFixed(2)}` : `Win: ${roundWin.toFixed(2)}`;
+        elements.winDisplay.textContent = `${winStr} | Balance: ${balance.toFixed(2)}`;
+    }
+
+    function updateSpinButton() {
+        const inProgress = isSpinning || gameState.spinInProgress;
+        elements.spinButton.disabled = inProgress;
+        elements.bonusBuyButton.disabled = inProgress;
+        if (inProgress) {
+            elements.spinButton.textContent = 'SPINNING...';
+        } else if (gameState.isInBonusMode) {
+            elements.spinButton.textContent = `FREE SPIN (${gameState.remainingFreeSpins} left)`;
+        } else {
+            elements.spinButton.textContent = 'SPIN';
+        }
+    }
+
+    async function animateEventSequence(events, serverSeed) {
+        for (const event of events) {
+            // --- OPTIMISTIC STATE UPDATE --- 
+            // Update the local gameState as events come in, so the UI feels responsive.
+            switch(event.type) {
+                case 'SPIN_START':
+                    // Deduct bet cost at the very start of the spin.
+                    if (!gameState.isInBonusMode) {
+                        gameState.balance -= constants.baseBetCost;
+                    }
+                    gameState.roundWin = 0;
+                    updateBalance();
+                    break;
+                case 'WIN':
+                    gameState.roundWin = event.currentRoundWin;
+                    if (gameState.isInBonusMode) {
+                         // This is an approximation, the final balance is synced later.
+                        gameState.totalBonusWin = (gameState.totalBonusWin || 0) + event.paylines.reduce((s,p) => s+p.winAmount,0);
+                    }
+                    updateBalance();
+                    break;
+                case 'ROUND_END':
+                    gameState.balance = event.balance; // Final balance from server
+                    gameState.roundWin = 0;
+                    updateBalance();
+                    break;
+            }
+
+            // --- ANIMATION --- 
+            // Animate the visual representation of the event.
+            switch (event.type) {
+                case 'SPIN_START':
+                    updateGrid(event.grid);
+                    await animateInitialSpin();
+                    break;
+                case 'WIN':
+                    await animateWin(event.paylines);
+                    break;
+                case 'CASCADE':
+                    await animateCascade(event.clearedPositions);
+                    break;
+                case 'REFILL':
+                    updateGrid(event.newGrid);
+                    await sleep(getAnimationSpeed(200));
+                    break;
+                case 'BONUS_TRIGGERED':
+                    await animateBonusTriggered(event.spinCount);
+                    break;
+                case 'BONUS_SUMMARY':
+                    alert(`Bonus complete! Total win: ${event.totalBonusWin.toFixed(2)}`);
+                    break;
+                default:
+                    await sleep(getAnimationSpeed(100));
+                    break;
+            }
+        }
+        if (serverSeed) elements.provablyFairDisplay.textContent = `Server Seed: ${serverSeed}`;
+    }
+
+    // --- Animation & Helper Functions (Unchanged) ---
+    const getAnimationSpeed = (base) => base / constants.turboMultipliers[turboState];
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const getCell = (row, col) => elements.gridContainer.children[row * constants.cols + col];
+    const toggleTurbo = () => { turboState = (turboState + 1) % 3; elements.turboButton.innerHTML = ['⚡️', '⚡️⚡️', '⚡️⚡️⚡️'][turboState]; };
+    const showBonusBuyModal = () => elements.bonusBuyModal.classList.remove('hidden');
+    const hideBonusBuyModal = () => elements.bonusBuyModal.classList.add('hidden');
+    const updateGrid = (grid) => { if (!grid) return; gameState.currentGrid = grid; for (let r = 0; r < constants.rows; r++) for (let c = 0; c < constants.cols; c++) { const cell = getCell(r, c); if (cell) cell.innerHTML = grid[r]?.[c]?.id?.replace('_', ' ') || ''; } };
+    const createGrid = () => { elements.gridContainer.innerHTML = ''; for (let i = 0; i < constants.rows * constants.cols; i++) { const cell = document.createElement("div"); cell.classList.add('cell'); elements.gridContainer.appendChild(cell); } };
+    const animateInitialSpin = async () => { for (let c = 0; c < constants.cols; c++) { for (let r = 0; r < constants.rows; r++) { const cell = getCell(r, c); if (!cell) continue; cell.style.transition = 'none'; cell.style.transform = `translateY(-200px)`; await sleep(5); cell.style.transition = 'transform 0.5s ease-out'; cell.style.transform = 'translateY(0)'; } await sleep(getAnimationSpeed(50)); } };
+    const animateWin = async (paylines) => { paylines.forEach(p => p.positions.forEach(pos => getCell(pos.row, pos.col)?.classList.add('win'))); await sleep(getAnimationSpeed(400)); paylines.forEach(p => p.positions.forEach(pos => getCell(pos.row, pos.col)?.classList.remove('win'))); };
+    const animateCascade = async (clearedPositions) => { clearedPositions.forEach(pos => { const cell = getCell(pos.row, pos.col); if(cell) { cell.classList.remove('win'); cell.classList.add('cascade'); } }); await sleep(getAnimationSpeed(300)); clearedPositions.forEach(pos => { const cell = getCell(pos.row, pos.col); if(cell) cell.innerHTML = ''; }); };
+    const animateBonusTriggered = async (spinCount) => { elements.winDisplay.textContent = `BONUS! ${spinCount} FREE SPINS!`; await sleep(2000); };
+
+    // --- Initial Setup & Event Listeners ---
     createGrid();
+    syncGameState();
     elements.spinButton.addEventListener('click', handleSpin);
-    elements.toggleViewButton.addEventListener('click', toggleView);
-    elements.addReviewForm.addEventListener('submit', handleAddReview);
-    elements.movieList.addEventListener('click', (event) => {
-        const target = event.target;
-        const reviewId = target.dataset.reviewId;
-        if (target.classList.contains('delete-review-btn')) {
-            handleDeleteReview(reviewId);
-        } else if (target.classList.contains('edit-review-btn')) {
-            handleEditReview(reviewId);
-        } else if (target.classList.contains('save-review-btn')) {
-            handleSaveReview(reviewId);
-        } else if (target.classList.contains('cancel-edit-btn')) {
-            handleCancelEdit(reviewId);
-        }
-    });
+    elements.turboButton.addEventListener('click', toggleTurbo);
+    elements.bonusBuyButton.addEventListener('click', showBonusBuyModal);
+    elements.confirmBonusBuy.addEventListener('click', executeBonusBuy);
+    elements.cancelBonusBuy.addEventListener('click', hideBonusBuyModal);
 });

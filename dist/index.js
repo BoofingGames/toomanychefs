@@ -39,38 +39,113 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const crypto = __importStar(require("crypto"));
 const admin = __importStar(require("firebase-admin"));
+const firestore_1 = require("firebase-admin/firestore");
 const GameEngine_1 = require("./GameEngine");
+const GameEngine_2 = require("./GameEngine");
 const dataconnect_admin_generated_1 = require("./dataconnect-admin-generated");
 const data_connect_1 = require("firebase-admin/data-connect");
+// --- Firebase and Express Initialization ---
 admin.initializeApp();
 const app = (0, express_1.default)();
+const db = (0, firestore_1.getFirestore)();
 const dc = (0, data_connect_1.getDataConnect)(dataconnect_admin_generated_1.connectorConfig);
-// Middleware
+// --- Middleware ---
 app.use(express_1.default.static('public'));
 app.use(express_1.default.json());
-// API route for the game
-app.post('/api/spin', (req, res) => {
-    console.log("Spin request received", { body: req.body });
+// =================================================================================
+// --- STATEFUL API ENDPOINTS (Corrected) ---
+// =================================================================================
+const getUserId = (req) => {
+    // In a real application, this would come from an authenticated user token.
+    return "player1";
+};
+app.get('/api/state', async (req, res) => {
+    const userId = getUserId(req);
+    const userStateRef = db.collection('gameStates').doc(userId);
+    try {
+        const doc = await userStateRef.get();
+        if (!doc.exists) {
+            const initialState = GameEngine_1.GameEngine.getInitialState(userId);
+            await userStateRef.set(initialState);
+            return res.json(initialState);
+        }
+        // --- FIX: Added missing return statement ---
+        return res.json(doc.data());
+    }
+    catch (error) {
+        console.error("Error getting state:", error);
+        return res.status(500).send({ error: 'Failed to retrieve game state.' });
+    }
+});
+app.post('/api/spin', async (req, res) => {
     const { clientSeed, nonce } = req.body;
-    if (clientSeed === undefined || nonce === undefined) {
-        console.error("Bad request: clientSeed or nonce missing");
+    if (!clientSeed || nonce === undefined) {
         return res.status(400).send({ error: 'clientSeed and nonce are required.' });
     }
-    const serverSeed = crypto.randomBytes(32).toString('hex');
-    const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, nonce);
-    const result = engine.resolveSpin();
-    // Combine the engine result with the server seed for the response
-    return res.json(Object.assign(Object.assign({}, result), { serverSeed: serverSeed }));
+    const userId = getUserId(req);
+    const userStateRef = db.collection('gameStates').doc(userId);
+    try {
+        const doc = await userStateRef.get();
+        let currentState;
+        if (!doc.exists) {
+            currentState = GameEngine_1.GameEngine.getInitialState(userId);
+        }
+        else {
+            currentState = doc.data();
+        }
+        const serverSeed = crypto.randomBytes(32).toString('hex');
+        // --- FIX: Ensure nonce is a number ---
+        const engine = new GameEngine_1.GameEngine(serverSeed, clientSeed, Number(nonce));
+        const result = engine.processSpin(currentState);
+        await userStateRef.set(result.newState);
+        return res.json({
+            eventSequence: result.eventSequence,
+            serverSeed: serverSeed
+        });
+    }
+    catch (error) {
+        console.error("Error processing spin:", error);
+        return res.status(500).send({ error: error.message });
+    }
 });
+app.post('/api/buy-bonus', async (req, res) => {
+    const userId = getUserId(req);
+    const userStateRef = db.collection('gameStates').doc(userId);
+    try {
+        const doc = await userStateRef.get();
+        if (!doc.exists) {
+            return res.status(404).send({ error: 'No game state found. Please spin first.' });
+        }
+        let currentState = doc.data();
+        if (currentState.balance < GameEngine_2.BONUS_BUY_COST) {
+            return res.status(400).send({ error: 'Insufficient balance for Bonus Buy.' });
+        }
+        if (currentState.spinInProgress) {
+            return res.status(400).send({ error: 'Cannot buy bonus while a spin is in progress.' });
+        }
+        currentState.balance -= GameEngine_2.BONUS_BUY_COST;
+        currentState.requestBonusBuy = true;
+        await userStateRef.set(currentState);
+        return res.json({
+            success: true,
+            newBalance: currentState.balance,
+            message: 'Bonus Buy initiated. Press Spin to play your guaranteed bonus round.'
+        });
+    }
+    catch (error) {
+        console.error("Error initiating bonus buy:", error);
+        return res.status(500).send({ error: 'An internal error occurred.' });
+    }
+});
+// --- Other API Routes (Unchanged) ---
 app.get("/api/movies", async (req, res) => {
     const result = await (0, dataconnect_admin_generated_1.listMovies)(dc);
     return res.json(result.data.movies);
 });
-// Serve the main page
 app.get('/', (req, res) => {
     res.sendFile('index.html', { root: 'public' });
 });
-// Start the server for App Hosting
+// --- Server Start ---
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
