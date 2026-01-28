@@ -11,6 +11,8 @@
 
     <div id="controls">
         <button id="toggleViewButton">View Movies</button>
+        <button id="turbo-button">⚡️</button> <!-- Bolt 1 for Normal Speed -->
+        <button id="bonus-buy-button">⭐️ Bonus Buy</button>
     </div>
 
     <div id="slot-machine">
@@ -23,6 +25,7 @@
     </div>
 
     <div id="movie-catalog" class="hidden">
+        <!-- Movie Catalog content remains the same -->
         <h2>Movie Catalog</h2>
         <div id="movie-list"></div>
         <hr>
@@ -46,6 +49,20 @@
             </div>
             <button type="submit">Submit Review</button>
         </form>
+    </div>
+
+    <!-- Bonus Buy Modal -->
+    <div id="bonus-buy-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Buy Bonus Feature</h2>
+            <p>Trigger the Free Spins bonus round guaranteed!</p>
+            <p><strong>Cost:</strong> <span id="bonus-buy-cost">1000</span> credits</p>
+            <p>Are you sure you want to proceed?</p>
+            <div class="modal-buttons">
+                <button id="confirm-bonus-buy">Yes</button>
+                <button id="cancel-bonus-buy">No</button>
+            </div>
+        </div>
     </div>
 
     <script src="main.js"></script>
