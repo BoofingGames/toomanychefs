@@ -3,48 +3,45 @@ import * as crypto from 'crypto';
 import { GameEngine, GameState } from './src/GameEngine.js';
 
 // =================================================================================
-// --- VOLATILITY SIMULATION (Updated for Modern GameEngine) ---
+// --- VOLATILITY SIMULATION (High-Performance Refactor) ---
 // =================================================================================
 
-const NUM_ROUNDS = 100000; // 100k rounds to get a decent statistical sample.
-const BASE_BET = 10; // The fixed bet amount for each main round.
+const NUM_ROUNDS = 100000; // 100k rounds for a robust statistical sample.
+const BASE_BET = 10;
 
 // --- Statistics Trackers ---
 let totalWinAmount = 0;
 let totalBaseGameWinAmount = 0;
 let totalBonusWinAmount = 0;
-let totalWins = 0; // Rounds where total win > 0
+let totalWins = 0;
 let bonusTriggers = 0;
 let maxWin = 0;
 
 /**
- * Simulates a full game round, including the initial spin and all subsequent
- * automatic actions (cascades, bonus spins).
- * @param serverSeed The server seed for the round.
- * @returns The total win for the entire round and whether a bonus was triggered.
+ * Simulates a full game round, creating the GameEngine only once.
+ * @param serverSeed The server seed for the entire round.
  */
 function simulateFullRound(serverSeed: string) {
     const clientSeed = crypto.randomBytes(16).toString('hex');
+    const engine = new GameEngine(serverSeed, clientSeed); // Create engine ONCE per round.
     let nonce = 0;
 
-    // Start with a fresh state for each round.
     let currentState: GameState = GameEngine.getInitialState('simulation-player');
     let roundTotalWin = 0;
     let roundBaseGameWin = 0;
     let roundBonusGameWin = 0;
     let bonusWasTriggered = false;
 
-    // --- Execute the first spin (player-initiated) ---
-    const engine = new GameEngine(serverSeed, clientSeed, nonce);
-    const initialResult = engine.processSpin(currentState);
+    // --- Initial Spin (player-initiated) ---
+    // The first action is always to set spinInProgress to false for a paid spin.
+    const paidSpinState = { ...currentState, spinInProgress: false };
+    const initialResult = engine.processSpin(paidSpinState, nonce);
     
     currentState = initialResult.newState;
     roundTotalWin += initialResult.totalWinInStep;
 
-    // Check events from the first spin
     for (const event of initialResult.eventSequence) {
         if (event.type === 'WIN') {
-            // All wins in the first step are base game wins
             roundBaseGameWin += event.paylines.reduce((sum, p) => sum + p.winAmount, 0);
         }
         if (event.type === 'BONUS_TRIGGERED') {
@@ -52,23 +49,22 @@ function simulateFullRound(serverSeed: string) {
         }
     }
 
-    // --- Process all automatic follow-up actions (cascades, bonus spins) ---
-    // The loop continues as long as the game is in an automatic "inProgress" state.
+    // --- Automatic Follow-up Actions (Cascades, Bonus Spins) ---
+    // This loop now processes all subsequent actions without creating new engines.
     while (currentState.spinInProgress) {
-        nonce++; // IMPORTANT: Increment nonce for each step to ensure unique outcomes
-        const nextEngine = new GameEngine(serverSeed, clientSeed, nonce);
-        const nextResult = nextEngine.processSpin(currentState);
+        nonce++; // CRITICAL: Increment nonce for each automatic step.
+        const nextResult = engine.processSpin(currentState, nonce);
         
         currentState = nextResult.newState;
         roundTotalWin += nextResult.totalWinInStep;
 
-        // Check events from this step
         for (const event of nextResult.eventSequence) {
             if (event.type === 'WIN') {
                 const stepWin = event.paylines.reduce((sum, p) => sum + p.winAmount, 0);
                 if (event.isBonusSpin) {
                     roundBonusGameWin += stepWin;
                 } else {
+                    // This handles wins from cascades that happen in the base game.
                     roundBaseGameWin += stepWin;
                 }
             }
@@ -79,10 +75,10 @@ function simulateFullRound(serverSeed: string) {
 }
 
 /**
- * The main simulation function.
+ * The main simulation runner.
  */
 function runSimulation() {
-    console.log('--- Starting Volatility Simulation (Modern Engine) ---');
+    console.log('--- Starting Volatility Simulation (High-Performance) ---');
     console.log(`Simulating ${NUM_ROUNDS} full game rounds...`);
     const startTime = Date.now();
 
@@ -90,17 +86,14 @@ function runSimulation() {
         const serverSeed = crypto.randomBytes(32).toString('hex');
         const { roundTotalWin, roundBaseGameWin, roundBonusGameWin, bonusWasTriggered } = simulateFullRound(serverSeed);
 
-        // --- Update Global Statistics ---
+        // Update global statistics
         totalWinAmount += roundTotalWin;
+        totalBaseGameWinAmount += roundBaseGameWin;
+        totalBonusWinAmount += roundBonusGameWin;
+
         if (bonusWasTriggered) {
             bonusTriggers++;
-            totalBaseGameWinAmount += roundBaseGameWin;
-            totalBonusWinAmount += roundBonusGameWin;
-        } else {
-            // If no bonus, the entire win is from the base game.
-            totalBaseGameWinAmount += roundTotalWin;
         }
-
         if (roundTotalWin > 0) {
             totalWins++;
         }
@@ -108,13 +101,13 @@ function runSimulation() {
             maxWin = roundTotalWin;
         }
 
-        if ((i + 1) % 1000 === 0) {
+        if ((i + 1) % 1000 === 0) { // Progress update every 1,000 rounds
             console.log(`... Progress: ${((i + 1) / NUM_ROUNDS * 100).toFixed(0)}%`);
         }
     }
     const endTime = Date.now();
 
-    // --- Final Report ---
+    // Final report calculation and printing
     const totalCost = NUM_ROUNDS * BASE_BET;
     const totalRTP = (totalWinAmount / totalCost) * 100;
     const baseGameRTP = (totalBaseGameWinAmount / totalCost) * 100;
